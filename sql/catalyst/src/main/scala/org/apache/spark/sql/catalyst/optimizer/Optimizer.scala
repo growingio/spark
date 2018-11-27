@@ -541,7 +541,29 @@ object CollapseProject extends Rule[LogicalPlan] {
     // deterministic.
     upper.exists(_.collect {
       case a: Attribute if aliases.contains(a) => aliases(a).child
-    }.exists(!_.deterministic))
+    }.exists(child => refuseOptimization(child) || !child.deterministic))
+  }
+
+  /**
+    * recursively check if the expression is [[ScalaUDF]] and refuseOptimizer
+    */
+  private def refuseOptimization(expression: Expression): Boolean = {
+    expression match {
+      case udf: ScalaUDF if udf.refuseOptimizer =>
+        true
+      case _ =>
+        if (expression.children.isEmpty) {
+          false
+        } else {
+          expression.children.foldLeft(false)((op, expr) => {
+            if (op) {
+              true
+            } else {
+              refuseOptimization(expr)
+            }
+          })
+        }
+    }
   }
 
   private def buildCleanedProjectList(

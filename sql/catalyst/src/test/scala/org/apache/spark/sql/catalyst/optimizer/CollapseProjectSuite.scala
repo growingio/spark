@@ -20,10 +20,12 @@ package org.apache.spark.sql.catalyst.optimizer
 import org.apache.spark.sql.catalyst.analysis.EliminateSubqueryAliases
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
-import org.apache.spark.sql.catalyst.expressions.Rand
+import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.expressions.{Rand, ScalaUDF}
 import org.apache.spark.sql.catalyst.plans.PlanTest
 import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
+import org.apache.spark.sql.types.{MapType, StringType}
 
 class CollapseProjectSuite extends PlanTest {
   object Optimize extends RuleExecutor[LogicalPlan] {
@@ -33,6 +35,35 @@ class CollapseProjectSuite extends PlanTest {
   }
 
   val testRelation = LocalRelation('a.int, 'b.int)
+
+  test("collapse udf") {
+    val splitUDF = ScalaUDF((i: Int) => Map("c" -> (i + 1).toString, "d" -> (i - 1).toString),
+      MapType(StringType, StringType), testRelation.output.head :: Nil)
+
+    val query = testRelation
+      .select(splitUDF.as('g))
+      .select(GetMapValue('g, "c").as('gc), GetMapValue('g, "d").as('gd))
+
+    val optimized = Optimize.execute(query.analyze)
+    val correctAnswer = testRelation.select(GetMapValue(splitUDF, "c").as('gc),
+      GetMapValue(splitUDF, "d").as('gd)).analyze
+
+    comparePlans(optimized, correctAnswer)
+  }
+
+  test("collapse refuseOptimizer udf") {
+    val splitUDF = ScalaUDF((i: Int) => Map("c" -> (i + 1).toString, "d" -> (i - 1).toString),
+      MapType(StringType, StringType), testRelation.output.head :: Nil, refuseOptimizer = true)
+
+    val query = testRelation
+      .select(splitUDF.as('g))
+      .select(GetMapValue('g, "c").as('gc), GetMapValue('g, "d").as('gd))
+
+    val originalPlan = query.analyze
+    val optimizedPlan = Optimize.execute(originalPlan)
+
+    comparePlans(originalPlan, optimizedPlan)
+  }
 
   test("collapse two deterministic, independent projects into one") {
     val query = testRelation

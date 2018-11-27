@@ -42,7 +42,8 @@ case class ScalaUDF(
     dataType: DataType,
     children: Seq[Expression],
     inputTypes: Seq[DataType] = Nil,
-    udfName: Option[String] = None)
+    udfName: Option[String] = None,
+    refuseOptimizer: Boolean = false)
   extends Expression with ImplicitCastInputTypes with NonSQLExpression {
 
   override def nullable: Boolean = true
