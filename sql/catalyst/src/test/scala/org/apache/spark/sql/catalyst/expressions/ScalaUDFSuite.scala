@@ -43,7 +43,7 @@ class ScalaUDFSuite extends SparkFunSuite with ExpressionEvalHelper {
     assert(e1.getMessage.contains("Failed to execute user defined function"))
 
     val e2 = intercept[SparkException] {
-      checkEvalutionWithUnsafeProjection(udf, null)
+      checkEvaluationWithUnsafeProjection(udf, null)
     }
     assert(e2.getMessage.contains("Failed to execute user defined function"))
   }
@@ -51,6 +51,6 @@ class ScalaUDFSuite extends SparkFunSuite with ExpressionEvalHelper {
   test("SPARK-22695: ScalaUDF should not use global variables") {
     val ctx = new CodegenContext
     ScalaUDF((s: String) => s + "x", StringType, Literal("a") :: Nil).genCode(ctx)
-    assert(ctx.mutableStates.isEmpty)
+    assert(ctx.inlinedMutableStates.isEmpty)
   }
 }

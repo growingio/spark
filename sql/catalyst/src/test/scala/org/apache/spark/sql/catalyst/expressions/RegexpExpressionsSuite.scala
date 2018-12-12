@@ -100,12 +100,12 @@ class RegexpExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
 
     // invalid escaping
     val invalidEscape = intercept[AnalysisException] {
-      evaluate("""a""" like """\a""")
+      evaluateWithoutCodegen("""a""" like """\a""")
     }
     assert(invalidEscape.getMessage.contains("pattern"))
 
     val endEscape = intercept[AnalysisException] {
-      evaluate("""a""" like """a\""")
+      evaluateWithoutCodegen("""a""" like """a\""")
     }
     assert(endEscape.getMessage.contains("pattern"))
 
@@ -147,11 +147,11 @@ class RegexpExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
     checkLiteralRow("abc"  rlike _, "^bc", false)
 
     intercept[java.util.regex.PatternSyntaxException] {
-      evaluate("abbbbc" rlike "**")
+      evaluateWithoutCodegen("abbbbc" rlike "**")
     }
     intercept[java.util.regex.PatternSyntaxException] {
       val regex = 'a.string.at(0)
-      evaluate("abbbbc" rlike regex, create_row("**"))
+      evaluateWithoutCodegen("abbbbc" rlike regex, create_row("**"))
     }
   }
 
@@ -183,8 +183,9 @@ class RegexpExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
     val ctx = new CodegenContext
     RegExpReplace(Literal("100"), Literal("(\\d+)"), Literal("num")).genCode(ctx)
     // four global variables (lastRegex, pattern, lastReplacement, and lastReplacementInUTF8)
-    // are always required
-    assert(ctx.mutableStates.length == 4)
+    // are always required, which are allocated in type-based global array
+    assert(ctx.inlinedMutableStates.length == 0)
+    assert(ctx.mutableStateInitCode.length == 4)
   }
 
   test("RegexExtract") {

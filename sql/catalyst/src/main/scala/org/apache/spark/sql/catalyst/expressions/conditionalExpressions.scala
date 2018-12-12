@@ -20,6 +20,7 @@ package org.apache.spark.sql.catalyst.expressions
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.expressions.codegen._
+import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.types._
 
 // scalastyle:off line.size.limit
@@ -40,7 +41,8 @@ case class If(predicate: Expression, trueValue: Expression, falseValue: Expressi
   override def checkInputDataTypes(): TypeCheckResult = {
     if (predicate.dataType != BooleanType) {
       TypeCheckResult.TypeCheckFailure(
-        s"type of predicate expression in If should be boolean, not ${predicate.dataType}")
+        "type of predicate expression in If should be boolean, " +
+          s"not ${predicate.dataType.simpleString}")
     } else if (!trueValue.dataType.sameType(falseValue.dataType)) {
       TypeCheckResult.TypeCheckFailure(s"differing types in '$sql' " +
         s"(${trueValue.dataType.simpleString} and ${falseValue.dataType.simpleString}).")
@@ -65,10 +67,10 @@ case class If(predicate: Expression, trueValue: Expression, falseValue: Expressi
     val falseEval = falseValue.genCode(ctx)
 
     val code =
-      s"""
+      code"""
          |${condEval.code}
          |boolean ${ev.isNull} = false;
-         |${ctx.javaType(dataType)} ${ev.value} = ${ctx.defaultValue(dataType)};
+         |${CodeGenerator.javaType(dataType)} ${ev.value} = ${CodeGenerator.defaultValue(dataType)};
          |if (!${condEval.isNull} && ${condEval.value}) {
          |  ${trueEval.code}
          |  ${ev.isNull} = ${trueEval.isNull};
@@ -190,8 +192,9 @@ case class CaseWhen(
     // It is initialized to `NOT_MATCHED`, and if it's set to `HAS_NULL` or `HAS_NONNULL`,
     // We won't go on anymore on the computation.
     val resultState = ctx.freshName("caseWhenResultState")
-    val tmpResult = ctx.freshName("caseWhenTmpResult")
-    ctx.addMutableState(ctx.javaType(dataType), tmpResult)
+    ev.value = JavaCode.global(
+      ctx.addMutableState(CodeGenerator.javaType(dataType), ev.value),
+      dataType)
 
     // these blocks are meant to be inside a
     // do {
@@ -206,7 +209,7 @@ case class CaseWhen(
          |if (!${cond.isNull} && ${cond.value}) {
          |  ${res.code}
          |  $resultState = (byte)(${res.isNull} ? $HAS_NULL : $HAS_NONNULL);
-         |  $tmpResult = ${res.value};
+         |  ${ev.value} = ${res.value};
          |  continue;
          |}
        """.stripMargin
@@ -217,7 +220,7 @@ case class CaseWhen(
       s"""
          |${res.code}
          |$resultState = (byte)(${res.isNull} ? $HAS_NULL : $HAS_NONNULL);
-         |$tmpResult = ${res.value};
+         |${ev.value} = ${res.value};
        """.stripMargin
     }
 
@@ -244,10 +247,10 @@ case class CaseWhen(
     val codes = ctx.splitExpressionsWithCurrentInputs(
       expressions = allConditions,
       funcName = "caseWhen",
-      returnType = ctx.JAVA_BYTE,
+      returnType = CodeGenerator.JAVA_BYTE,
       makeSplitFunction = func =>
         s"""
-           |${ctx.JAVA_BYTE} $resultState = $NOT_MATCHED;
+           |${CodeGenerator.JAVA_BYTE} $resultState = $NOT_MATCHED;
            |do {
            |  $func
            |} while (false);
@@ -263,15 +266,13 @@ case class CaseWhen(
       }.mkString)
 
     ev.copy(code =
-      s"""
-         |${ctx.JAVA_BYTE} $resultState = $NOT_MATCHED;
-         |$tmpResult = ${ctx.defaultValue(dataType)};
+      code"""
+         |${CodeGenerator.JAVA_BYTE} $resultState = $NOT_MATCHED;
          |do {
          |  $codes
          |} while (false);
          |// TRUE if any condition is met and the result is null, or no any condition is met.
          |final boolean ${ev.isNull} = ($resultState != $HAS_NONNULL);
-         |final ${ctx.javaType(dataType)} ${ev.value} = $tmpResult;
        """.stripMargin)
   }
 }

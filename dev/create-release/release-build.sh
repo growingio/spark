@@ -92,9 +92,9 @@ MVN="build/mvn --force"
 # Hive-specific profiles for some builds
 HIVE_PROFILES="-Phive -Phive-thriftserver"
 # Profiles for publishing snapshots and release to Maven Central
-PUBLISH_PROFILES="-Pmesos -Pyarn -Pflume $HIVE_PROFILES -Pspark-ganglia-lgpl -Pkinesis-asl"
+PUBLISH_PROFILES="-Pmesos -Pyarn -Pkubernetes -Pflume $HIVE_PROFILES -Pspark-ganglia-lgpl -Pkinesis-asl"
 # Profiles for building binary releases
-BASE_RELEASE_PROFILES="-Pmesos -Pyarn -Pflume -Psparkr"
+BASE_RELEASE_PROFILES="-Pmesos -Pyarn -Pkubernetes -Pflume -Psparkr"
 # Scala 2.11 only profiles for some builds
 SCALA_2_11_PROFILES="-Pkafka-0-8"
 # Scala 2.12 only profiles for some builds
@@ -164,8 +164,6 @@ if [[ "$1" == "package" ]]; then
   tar cvzf spark-$SPARK_VERSION.tgz spark-$SPARK_VERSION
   echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --armour --output spark-$SPARK_VERSION.tgz.asc \
     --detach-sig spark-$SPARK_VERSION.tgz
-  echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md MD5 spark-$SPARK_VERSION.tgz > \
-    spark-$SPARK_VERSION.tgz.md5
   echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md \
     SHA512 spark-$SPARK_VERSION.tgz > spark-$SPARK_VERSION.tgz.sha512
   rm -rf spark-$SPARK_VERSION
@@ -216,9 +214,6 @@ if [[ "$1" == "package" ]]; then
         --output $R_DIST_NAME.asc \
         --detach-sig $R_DIST_NAME
       echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md \
-        MD5 $R_DIST_NAME > \
-        $R_DIST_NAME.md5
-      echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md \
         SHA512 $R_DIST_NAME > \
         $R_DIST_NAME.sha512
     else
@@ -235,9 +230,6 @@ if [[ "$1" == "package" ]]; then
         --output $PYTHON_DIST_NAME.asc \
         --detach-sig $PYTHON_DIST_NAME
       echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md \
-        MD5 $PYTHON_DIST_NAME > \
-        $PYTHON_DIST_NAME.md5
-      echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md \
         SHA512 $PYTHON_DIST_NAME > \
         $PYTHON_DIST_NAME.sha512
     fi
@@ -247,9 +239,6 @@ if [[ "$1" == "package" ]]; then
     echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --armour \
       --output spark-$SPARK_VERSION-bin-$NAME.tgz.asc \
       --detach-sig spark-$SPARK_VERSION-bin-$NAME.tgz
-    echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md \
-      MD5 spark-$SPARK_VERSION-bin-$NAME.tgz > \
-      spark-$SPARK_VERSION-bin-$NAME.tgz.md5
     echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --print-md \
       SHA512 spark-$SPARK_VERSION-bin-$NAME.tgz > \
       spark-$SPARK_VERSION-bin-$NAME.tgz.sha512

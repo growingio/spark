@@ -180,7 +180,7 @@ class ComplexTypeSuite extends SparkFunSuite with ExpressionEvalHelper {
         null, null)
     }
     intercept[RuntimeException] {
-      checkEvalutionWithUnsafeProjection(
+      checkEvaluationWithUnsafeProjection(
         CreateMap(interlace(strWithNull, intSeq.map(Literal(_)))),
         null, null)
     }
@@ -304,6 +304,6 @@ class ComplexTypeSuite extends SparkFunSuite with ExpressionEvalHelper {
   test("SPARK-22693: CreateNamedStruct should not use global variables") {
     val ctx = new CodegenContext
     CreateNamedStruct(Seq("a", "x", "b", 2.0)).genCode(ctx)
-    assert(ctx.mutableStates.isEmpty)
+    assert(ctx.inlinedMutableStates.isEmpty)
   }
 }

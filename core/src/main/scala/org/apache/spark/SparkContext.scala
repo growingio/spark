@@ -18,7 +18,6 @@
 package org.apache.spark
 
 import java.io._
-import java.lang.reflect.Constructor
 import java.net.URI
 import java.util.{Arrays, Locale, Properties, ServiceLoader, UUID}
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
@@ -54,7 +53,8 @@ import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.cluster.{CoarseGrainedSchedulerBackend, StandaloneSchedulerBackend}
 import org.apache.spark.scheduler.local.LocalSchedulerBackend
-import org.apache.spark.status.{AppStatusPlugin, AppStatusStore}
+import org.apache.spark.status.AppStatusStore
+import org.apache.spark.status.api.v1.ThreadStackTrace
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.TriggerThreadDump
 import org.apache.spark.ui.{ConsoleProgressBar, SparkUI}
@@ -417,7 +417,8 @@ class SparkContext(config: SparkConf) extends Logging {
 
     // Initialize the app status store and listener before SparkEnv is created so that it gets
     // all events.
-    _statusStore = AppStatusStore.createLiveStore(conf, l => listenerBus.addToStatusQueue(l))
+    _statusStore = AppStatusStore.createLiveStore(conf)
+    listenerBus.addToStatusQueue(_statusStore.listener.get)
 
     // Create the Spark execution environment (cache, map output tracker, etc)
     _env = createSparkEnv(_conf, isLocal, listenerBus)
@@ -446,14 +447,9 @@ class SparkContext(config: SparkConf) extends Logging {
         // For tests, do not enable the UI
         None
       }
-    _ui.foreach { ui =>
-      // Load any plugins that might want to modify the UI.
-      AppStatusPlugin.loadPlugins().foreach(_.setupUI(ui))
-
-      // Bind the UI before starting the task scheduler to communicate
-      // the bound port to the cluster manager properly
-      ui.bind()
-    }
+    // Bind the UI before starting the task scheduler to communicate
+    // the bound port to the cluster manager properly
+    _ui.foreach(_.bind())
 
     _hadoopConfiguration = SparkHadoopUtil.get.newConfiguration(_conf)
 
@@ -538,7 +534,8 @@ class SparkContext(config: SparkConf) extends Logging {
         schedulerBackend match {
           case b: ExecutorAllocationClient =>
             Some(new ExecutorAllocationManager(
-              schedulerBackend.asInstanceOf[ExecutorAllocationClient], listenerBus, _conf))
+              schedulerBackend.asInstanceOf[ExecutorAllocationClient], listenerBus, _conf,
+              _env.blockManager.master))
           case _ =>
             None
         }
@@ -1580,10 +1577,10 @@ class SparkContext(config: SparkConf) extends Logging {
 
   private[spark] def getExecutorIds(): Seq[String] = {
     schedulerBackend match {
-      case b: CoarseGrainedSchedulerBackend =>
+      case b: ExecutorAllocationClient =>
         b.getExecutorIds()
       case _ =>
-        logWarning("Requesting executors is only supported in coarse-grained mode")
+        logWarning("Requesting executors is not supported by current scheduler.")
         Nil
     }
   }
@@ -1609,10 +1606,10 @@ class SparkContext(config: SparkConf) extends Logging {
       hostToLocalTaskCount: scala.collection.immutable.Map[String, Int]
     ): Boolean = {
     schedulerBackend match {
-      case b: CoarseGrainedSchedulerBackend =>
+      case b: ExecutorAllocationClient =>
         b.requestTotalExecutors(numExecutors, localityAwareTasks, hostToLocalTaskCount)
       case _ =>
-        logWarning("Requesting executors is only supported in coarse-grained mode")
+        logWarning("Requesting executors is not supported by current scheduler.")
         false
     }
   }
@@ -1625,10 +1622,10 @@ class SparkContext(config: SparkConf) extends Logging {
   @DeveloperApi
   def requestExecutors(numAdditionalExecutors: Int): Boolean = {
     schedulerBackend match {
-      case b: CoarseGrainedSchedulerBackend =>
+      case b: ExecutorAllocationClient =>
         b.requestExecutors(numAdditionalExecutors)
       case _ =>
-        logWarning("Requesting executors is only supported in coarse-grained mode")
+        logWarning("Requesting executors is not supported by current scheduler.")
         false
     }
   }
@@ -1636,6 +1633,8 @@ class SparkContext(config: SparkConf) extends Logging {
   /**
    * :: DeveloperApi ::
    * Request that the cluster manager kill the specified executors.
+   *
+   * This is not supported when dynamic allocation is turned on.
    *
    * @note This is an indication to the cluster manager that the application wishes to adjust
    * its resource usage downwards. If the application wishes to replace the executors it kills
@@ -1647,10 +1646,13 @@ class SparkContext(config: SparkConf) extends Logging {
   @DeveloperApi
   def killExecutors(executorIds: Seq[String]): Boolean = {
     schedulerBackend match {
-      case b: CoarseGrainedSchedulerBackend =>
-        b.killExecutors(executorIds, replace = false, force = true).nonEmpty
+      case b: ExecutorAllocationClient =>
+        require(executorAllocationManager.isEmpty,
+          "killExecutors() unsupported with Dynamic Allocation turned on")
+        b.killExecutors(executorIds, adjustTargetNumExecutors = true, countFailures = false,
+          force = true).nonEmpty
       case _ =>
-        logWarning("Killing executors is only supported in coarse-grained mode")
+        logWarning("Killing executors is not supported by current scheduler.")
         false
     }
   }
@@ -1685,10 +1687,11 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   private[spark] def killAndReplaceExecutor(executorId: String): Boolean = {
     schedulerBackend match {
-      case b: CoarseGrainedSchedulerBackend =>
-        b.killExecutors(Seq(executorId), replace = true, force = true).nonEmpty
+      case b: ExecutorAllocationClient =>
+        b.killExecutors(Seq(executorId), adjustTargetNumExecutors = false, countFailures = true,
+          force = true).nonEmpty
       case _ =>
-        logWarning("Killing executors is only supported in coarse-grained mode")
+        logWarning("Killing executors is not supported by current scheduler.")
         false
     }
   }
@@ -1720,7 +1723,13 @@ class SparkContext(config: SparkConf) extends Logging {
   private[spark] def getRDDStorageInfo(filter: RDD[_] => Boolean): Array[RDDInfo] = {
     assertNotStopped()
     val rddInfos = persistentRdds.values.filter(filter).map(RDDInfo.fromRdd).toArray
-    StorageUtils.updateRddInfo(rddInfos, getExecutorStorageStatus)
+    rddInfos.foreach { rddInfo =>
+      val rddId = rddInfo.id
+      val rddStorageInfo = statusStore.asOption(statusStore.rdd(rddId))
+      rddInfo.numCachedPartitions = rddStorageInfo.map(_.numCachedPartitions).getOrElse(0)
+      rddInfo.memSize = rddStorageInfo.map(_.memoryUsed).getOrElse(0L)
+      rddInfo.diskSize = rddStorageInfo.map(_.diskUsed).getOrElse(0L)
+    }
     rddInfos.filter(_.isCached)
   }
 
@@ -1730,17 +1739,6 @@ class SparkContext(config: SparkConf) extends Logging {
    * @note This does not necessarily mean the caching or computation was successful.
    */
   def getPersistentRDDs: Map[Int, RDD[_]] = persistentRdds.toMap
-
-  /**
-   * :: DeveloperApi ::
-   * Return information about blocks stored in all of the slaves
-   */
-  @DeveloperApi
-  @deprecated("This method may change or be removed in a future release.", "2.2.0")
-  def getExecutorStorageStatus: Array[StorageStatus] = {
-    assertNotStopped()
-    env.blockManager.master.getStorageStatus
-  }
 
   /**
    * :: DeveloperApi ::
@@ -2281,7 +2279,7 @@ class SparkContext(config: SparkConf) extends Logging {
   }
 
   /**
-   * Clean a closure to make it ready to serialized and send to tasks
+   * Clean a closure to make it ready to be serialized and sent to tasks
    * (removes unreferenced variables in $outer's, updates REPL variables)
    * If <tt>checkSerializable</tt> is set, <tt>clean</tt> will also proactively
    * check to see if <tt>f</tt> is serializable and throw a <tt>SparkException</tt>
