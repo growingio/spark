@@ -27,7 +27,7 @@ import org.apache.log4j.Logger
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.DeployMessages._
 import org.apache.spark.deploy.master.{DriverState, Master}
-import org.apache.spark.internal.Logging
+import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.rpc.{RpcAddress, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.util.{SparkExitCode, ThreadUtils, Utils}
 
@@ -72,18 +72,18 @@ private class ClientEndpoint(
         //       people call `addJar` assuming the jar is in the same directory.
         val mainClass = "org.apache.spark.deploy.worker.DriverWrapper"
 
-        val classPathConf = "spark.driver.extraClassPath"
-        val classPathEntries = getProperty(classPathConf, conf).toSeq.flatMap { cp =>
+        val classPathConf = config.DRIVER_CLASS_PATH.key
+        val classPathEntries = sys.props.get(classPathConf).toSeq.flatMap { cp =>
           cp.split(java.io.File.pathSeparator)
         }
 
-        val libraryPathConf = "spark.driver.extraLibraryPath"
-        val libraryPathEntries = getProperty(libraryPathConf, conf).toSeq.flatMap { cp =>
+        val libraryPathConf = config.DRIVER_LIBRARY_PATH.key
+        val libraryPathEntries = sys.props.get(libraryPathConf).toSeq.flatMap { cp =>
           cp.split(java.io.File.pathSeparator)
         }
 
-        val extraJavaOptsConf = "spark.driver.extraJavaOptions"
-        val extraJavaOpts = getProperty(extraJavaOptsConf, conf)
+        val extraJavaOptsConf = config.DRIVER_JAVA_OPTIONS.key
+        val extraJavaOpts = sys.props.get(extraJavaOptsConf)
           .map(Utils.splitCommandString).getOrElse(Seq.empty)
 
         val sparkJavaOpts = Utils.sparkJavaOpts(conf)

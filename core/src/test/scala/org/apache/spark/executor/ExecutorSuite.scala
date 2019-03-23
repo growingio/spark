@@ -39,6 +39,9 @@ import org.scalatest.mockito.MockitoSugar
 import org.apache.spark._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.memory.MemoryManager
+import org.apache.spark.internal.config._
+import org.apache.spark.internal.config.UI._
+import org.apache.spark.memory.TestMemoryManager
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.rdd.RDD
 import org.apache.spark.rpc.RpcEnv
@@ -165,7 +168,7 @@ class ExecutorSuite extends SparkFunSuite with LocalSparkContext with MockitoSug
     val conf = new SparkConf()
       .setMaster("local")
       .setAppName("executor thread test")
-      .set("spark.ui.enabled", "false")
+      .set(UI_ENABLED.key, "false")
     sc = new SparkContext(conf)
     val executorThread = sc.parallelize(Seq(1), 1).map { _ =>
       Thread.currentThread.getClass.getName

@@ -26,9 +26,10 @@ import scala.concurrent.duration._
 
 import org.apache.avro.{Schema, SchemaNormalization}
 
-import org.apache.spark.deploy.history.config._
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
+import org.apache.spark.internal.config.History._
+import org.apache.spark.internal.config.Kryo._
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.util.Utils
 
@@ -124,7 +125,7 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
   /** Set JAR files to distribute to the cluster. */
   def setJars(jars: Seq[String]): SparkConf = {
     for (jar <- jars if (jar == null)) logWarning("null jar passed to SparkContext constructor")
-    set("spark.jars", jars.filter(_ != null).mkString(","))
+    set(JARS, jars.filter(_ != null))
   }
 
   /** Set JAR files to distribute to the cluster. (Java-friendly version.) */
@@ -202,12 +203,12 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
    */
   def registerKryoClasses(classes: Array[Class[_]]): SparkConf = {
     val allClassNames = new LinkedHashSet[String]()
-    allClassNames ++= get("spark.kryo.classesToRegister", "").split(',').map(_.trim)
+    allClassNames ++= get(KRYO_CLASSES_TO_REGISTER).map(_.trim)
       .filter(!_.isEmpty)
     allClassNames ++= classes.map(_.getName)
 
-    set("spark.kryo.classesToRegister", allClassNames.mkString(","))
-    set("spark.serializer", classOf[KryoSerializer].getName)
+    set(KRYO_CLASSES_TO_REGISTER, allClassNames.toSeq)
+    set(SERIALIZER, classOf[KryoSerializer].getName)
     this
   }
 
@@ -504,12 +505,7 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
       logWarning(msg)
     }
 
-    val executorOptsKey = "spark.executor.extraJavaOptions"
-    val executorClasspathKey = "spark.executor.extraClassPath"
-    val driverOptsKey = "spark.driver.extraJavaOptions"
-    val driverClassPathKey = "spark.driver.extraClassPath"
-    val driverLibraryPathKey = "spark.driver.extraLibraryPath"
-    val sparkExecutorInstances = "spark.executor.instances"
+    val executorOptsKey = EXECUTOR_JAVA_OPTIONS.key
 
     // Used by Yarn in 1.1 and before
     sys.props.get("spark.driver.libraryPath").foreach { value =>
@@ -518,7 +514,7 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
           |spark.driver.libraryPath was detected (set to '$value').
           |This is deprecated in Spark 1.2+.
           |
-          |Please instead use: $driverLibraryPathKey
+          |Please instead use: ${DRIVER_LIBRARY_PATH.key}
         """.stripMargin
       logWarning(warning)
     }
@@ -578,31 +574,40 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
         case "yarn-cluster" =>
           logWarning(warning)
           set("spark.master", "yarn")
-          set("spark.submit.deployMode", "cluster")
+          set(SUBMIT_DEPLOY_MODE, "cluster")
         case "yarn-client" =>
           logWarning(warning)
           set("spark.master", "yarn")
-          set("spark.submit.deployMode", "client")
+          set(SUBMIT_DEPLOY_MODE, "client")
         case _ => // Any other unexpected master will be checked when creating scheduler backend.
       }
     }
 
-    if (contains("spark.submit.deployMode")) {
-      get("spark.submit.deployMode") match {
+    if (contains(SUBMIT_DEPLOY_MODE)) {
+      get(SUBMIT_DEPLOY_MODE) match {
         case "cluster" | "client" =>
-        case e => throw new SparkException("spark.submit.deployMode can only be \"cluster\" or " +
-          "\"client\".")
+        case e => throw new SparkException(s"${SUBMIT_DEPLOY_MODE.key} can only be " +
+          "\"cluster\" or \"client\".")
       }
     }
 
-    if (contains("spark.cores.max") && contains("spark.executor.cores")) {
-      val totalCores = getInt("spark.cores.max", 1)
-      val executorCores = getInt("spark.executor.cores", 1)
+    if (contains(CORES_MAX) && contains(EXECUTOR_CORES)) {
+      val totalCores = getInt(CORES_MAX.key, 1)
+      val executorCores = get(EXECUTOR_CORES)
       val leftCores = totalCores % executorCores
       if (leftCores != 0) {
         logWarning(s"Total executor cores: ${totalCores} is not " +
           s"divisible by cores per executor: ${executorCores}, " +
           s"the left cores: ${leftCores} will not be allocated")
+      }
+    }
+
+    if (contains(EXECUTOR_CORES) && contains("spark.task.cpus")) {
+      val executorCores = get(EXECUTOR_CORES)
+      val taskCpus = getInt("spark.task.cpus", 1)
+
+      if (executorCores < taskCpus) {
+        throw new SparkException(s"${EXECUTOR_CORES.key} must not be less than spark.task.cpus.")
       }
     }
 
@@ -672,7 +677,7 @@ private[spark] object SparkConf extends Logging {
    * TODO: consolidate it with `ConfigBuilder.withAlternative`.
    */
   private val configsWithAlternatives = Map[String, Seq[AlternateConfig]](
-    "spark.executor.userClassPathFirst" -> Seq(
+    EXECUTOR_USER_CLASS_PATH_FIRST.key -> Seq(
       AlternateConfig("spark.files.userClassPathFirst", "1.3")),
     "spark.history.fs.update.interval" -> Seq(
       AlternateConfig("spark.history.fs.update.interval.seconds", "1.4"),
@@ -695,7 +700,7 @@ private[spark] object SparkConf extends Logging {
       AlternateConfig("spark.kryoserializer.buffer.max.mb", "1.4")),
     "spark.shuffle.file.buffer" -> Seq(
       AlternateConfig("spark.shuffle.file.buffer.kb", "1.4")),
-    "spark.executor.logs.rolling.maxSize" -> Seq(
+    EXECUTOR_LOGS_ROLLING_MAX_SIZE.key -> Seq(
       AlternateConfig("spark.executor.logs.rolling.size.maxBytes", "1.4")),
     "spark.io.compression.snappy.blockSize" -> Seq(
       AlternateConfig("spark.io.compression.snappy.block.size", "1.4")),
@@ -728,7 +733,13 @@ private[spark] object SparkConf extends Logging {
     DRIVER_MEMORY_OVERHEAD.key -> Seq(
       AlternateConfig("spark.yarn.driver.memoryOverhead", "2.3")),
     EXECUTOR_MEMORY_OVERHEAD.key -> Seq(
-      AlternateConfig("spark.yarn.executor.memoryOverhead", "2.3"))
+      AlternateConfig("spark.yarn.executor.memoryOverhead", "2.3")),
+    KEYTAB.key -> Seq(
+      AlternateConfig("spark.yarn.keytab", "3.0")),
+    PRINCIPAL.key -> Seq(
+      AlternateConfig("spark.yarn.principal", "3.0")),
+    KERBEROS_RELOGIN_PERIOD.key -> Seq(
+      AlternateConfig("spark.yarn.kerberos.relogin.period", "3.0"))
   )
 
   /**

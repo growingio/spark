@@ -22,6 +22,7 @@ import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
 import org.apache.spark.sql.catalyst.analysis.{AnalysisTest, UnresolvedAlias, UnresolvedAttribute, UnresolvedRelation, UnresolvedStar}
 import org.apache.spark.sql.catalyst.catalog.{BucketSpec, CatalogStorageFormat, CatalogTable, CatalogTableType}
 import org.apache.spark.sql.catalyst.expressions.{Ascending, Concat, SortOrder}
+import org.apache.spark.sql.catalyst.expressions.{ConcatWs, Literal}
 import org.apache.spark.sql.catalyst.parser.ParseException
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project, RepartitionByExpression, Sort}
 import org.apache.spark.sql.execution.command._
@@ -357,8 +358,9 @@ class SparkSqlParserSuite extends AnalysisTest {
   }
 
   test("pipeline concatenation") {
-    val concat = Concat(
-      Concat(UnresolvedAttribute("a") :: UnresolvedAttribute("b") :: Nil) ::
+    val concat = ConcatWs(Literal.create("", StringType) ::
+      ConcatWs(Literal.create("", StringType) ::
+        UnresolvedAttribute("a") :: UnresolvedAttribute("b") :: Nil) ::
       UnresolvedAttribute("c") ::
       Nil
     )

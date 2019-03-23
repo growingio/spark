@@ -31,7 +31,9 @@ import org.scalatest.concurrent.Eventually._
 import org.apache.spark._
 import org.apache.spark.broadcast.BroadcastManager
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.MEMORY_OFFHEAP_SIZE
+import org.apache.spark.internal.config.{DRIVER_PORT, MEMORY_OFFHEAP_SIZE}
+import org.apache.spark.internal.config._
+import org.apache.spark.internal.config.Tests._
 import org.apache.spark.memory.UnifiedMemoryManager
 import org.apache.spark.network.BlockTransferService
 import org.apache.spark.network.netty.NettyBlockTransferService
@@ -85,8 +87,8 @@ trait BlockManagerReplicationBehavior extends SparkFunSuite
   before {
     rpcEnv = RpcEnv.create("test", "localhost", 0, conf, securityMgr)
 
-    conf.set("spark.authenticate", "false")
-    conf.set("spark.driver.port", rpcEnv.address.port.toString)
+    conf.set(NETWORK_AUTH_ENABLED, false)
+    conf.set(DRIVER_PORT, rpcEnv.address.port)
     conf.set("spark.testing", "true")
     conf.set("spark.memory.fraction", "1")
     conf.set("spark.memory.storageFraction", "1")

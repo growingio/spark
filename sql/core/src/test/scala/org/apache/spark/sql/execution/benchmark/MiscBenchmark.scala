@@ -17,7 +17,6 @@
 
 package org.apache.spark.sql.execution.benchmark
 
-import org.apache.spark.util.Benchmark
 
 /**
  * Benchmark to measure whole stage codegen performance.
@@ -26,7 +25,7 @@ import org.apache.spark.util.Benchmark
  *
  * Benchmarks in this file are skipped in normal builds.
  */
-class MiscBenchmark extends BenchmarkBase {
+/* class MiscBenchmark extends BenchmarkBase {
 
   ignore("filter & aggregate without group") {
     val N = 500L << 22
@@ -265,3 +264,5 @@ class MiscBenchmark extends BenchmarkBase {
   }
 
 }
+
+*/

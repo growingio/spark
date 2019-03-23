@@ -30,6 +30,7 @@ import org.apache.spark.sql.catalyst.analysis.{Star, UnresolvedFunction}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
+import org.apache.spark.sql.catalyst.expressions.aggregate.gio._
 import org.apache.spark.sql.catalyst.plans.logical.{HintInfo, ResolvedHint}
 import org.apache.spark.sql.execution.SparkSqlParser
 import org.apache.spark.sql.expressions.{SparkUserDefinedFunction, UserDefinedFunction}
@@ -3629,6 +3630,8 @@ object functions {
    * @param e a column containing a struct, an array or a map.
    * @param options options to control how the struct column is converted into a json string.
    *                accepts the same options and the json data source.
+   *                Additionally the function supports the `pretty` option which enables
+   *                pretty JSON generation.
    *
    * @group collection_funcs
    * @since 2.1.0
@@ -3645,6 +3648,8 @@ object functions {
    * @param e a column containing a struct, an array or a map.
    * @param options options to control how the struct column is converted into a json string.
    *                accepts the same options and the json data source.
+   *                Additionally the function supports the `pretty` option which enables
+   *                pretty JSON generation.
    *
    * @group collection_funcs
    * @since 2.1.0
@@ -4242,5 +4247,35 @@ object functions {
   @scala.annotation.varargs
   def callUDF(udfName: String, cols: Column*): Column = withExpr {
     UnresolvedFunction(udfName, cols.map(_.expr), isDistinct = false)
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  // GIO functions
+  //////////////////////////////////////////////////////////////////////////////////////////////
+
+  def collect_bucket_bitmap(bucket: Column, uid: Column): Column = withAggregateFunction {
+    CollectBucketBitmap(bucket.expr, uid.expr)
+  }
+
+  def collect_cbitmap(bucket: Column, uid: Column, count: Column): Column = withAggregateFunction {
+    CollectCBitmap(bucket.expr, uid.expr, count.expr)
+  }
+
+  def collect_sbitmap(bucket: Column, uid: Column, session: Column): Column = {
+    withAggregateFunction {
+      CollectSBitmap(bucket.expr, uid.expr, session.expr)
+    }
+  }
+
+  def merge_bucket_bitmap(bitmap: Column): Column = withAggregateFunction {
+    MergeBucketBitmap(bitmap.expr)
+  }
+
+  def merge_cbitmap(bitmap: Column): Column = withAggregateFunction {
+    MergeCBitmap(bitmap.expr)
+  }
+
+  def merge_sbitmap(bitmap: Column): Column = withAggregateFunction {
+    MergeSBitmap(bitmap.expr)
   }
 }

@@ -18,6 +18,7 @@
 package org.apache.spark.ui
 
 import java.net.{URI, URL}
+import java.util.EnumSet
 import javax.servlet.DispatcherType
 import javax.servlet.http.{HttpServlet, HttpServletRequest, HttpServletResponse}
 
@@ -39,7 +40,7 @@ import org.json4s.jackson.JsonMethods.{pretty, render}
 
 import org.apache.spark.{SecurityManager, SparkConf, SSLOptions}
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config._
+import org.apache.spark.internal.config.UI._
 import org.apache.spark.util.Utils
 
 /**
@@ -423,6 +424,16 @@ private[spark] object JettyUtils extends Logging {
     }
   }
 
+  def addFilter(
+      handler: ServletContextHandler,
+      filter: String,
+      params: Map[String, String]): Unit = {
+    val holder = new FilterHolder()
+    holder.setClassName(filter)
+    params.foreach { case (k, v) => holder.setInitParameter(k, v) }
+    handler.addFilter(holder, "/*", EnumSet.allOf(classOf[DispatcherType]))
+  }
+
   private def createRedirectHttpsHandler(securePort: Int, scheme: String): ContextHandler = {
     val redirectHandler: ContextHandler = new ContextHandler
     redirectHandler.setContextPath("/")
@@ -510,7 +521,7 @@ private[spark] case class ServerInfo(
     boundPort: Int,
     securePort: Option[Int],
     conf: SparkConf,
-    private val rootHandler: ContextHandlerCollection) {
+    private val rootHandler: ContextHandlerCollection) extends Logging {
 
   def addHandler(handler: ServletContextHandler): Unit = {
     handler.setVirtualHosts(JettyUtils.toVirtualHosts(JettyUtils.SPARK_CONNECTOR_NAME))
@@ -537,4 +548,33 @@ private[spark] case class ServerInfo(
       threadPool.asInstanceOf[LifeCycle].stop
     }
   }
+
+  /**
+   * Add filters, if any, to the given ServletContextHandlers. Always adds a filter at the end
+   * of the chain to perform security-related functions.
+   */
+  private def addFilters(handler: ServletContextHandler, securityMgr: SecurityManager): Unit = {
+    conf.get(UI_FILTERS).foreach { filter =>
+      logInfo(s"Adding filter to ${handler.getContextPath()}: $filter")
+      val oldParams = conf.getOption(s"spark.$filter.params").toSeq
+        .flatMap(Utils.stringToSeq)
+        .flatMap { param =>
+          val parts = param.split("=")
+          if (parts.length == 2) Some(parts(0) -> parts(1)) else None
+        }
+        .toMap
+
+      val newParams = conf.getAllWithPrefix(s"spark.$filter.param.").toMap
+
+      JettyUtils.addFilter(handler, filter, oldParams ++ newParams)
+    }
+
+    // This filter must come after user-installed filters, since that's where authentication
+    // filters are installed. This means that custom filters will see the request before it's
+    // been validated by the security filter.
+    val securityFilter = new HttpSecurityFilter(conf, securityMgr)
+    val holder = new FilterHolder(securityFilter)
+    handler.addFilter(holder, "/*", EnumSet.allOf(classOf[DispatcherType]))
+  }
+
 }

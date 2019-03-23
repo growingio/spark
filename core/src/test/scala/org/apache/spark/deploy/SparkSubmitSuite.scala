@@ -42,6 +42,7 @@ import org.apache.spark.deploy.SparkSubmit._
 import org.apache.spark.deploy.SparkSubmitUtils.MavenCoordinate
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
+import org.apache.spark.internal.config.UI._
 import org.apache.spark.launcher.SparkLauncher
 import org.apache.spark.scheduler.EventLoggingListener
 import org.apache.spark.util.{CommandLineUtils, ResetSystemProperties, Utils}
@@ -220,7 +221,7 @@ class SparkSubmitSuite
     val (_, _, conf, _) = submit.prepareSubmitEnvironment(appArgs)
 
     appArgs.deployMode should be ("client")
-    conf.get("spark.submit.deployMode") should be ("client")
+    conf.get(SUBMIT_DEPLOY_MODE) should be ("client")
 
     // Both cmd line and configuration are specified, cmdline option takes the priority
     val clArgs1 = Seq(
@@ -234,7 +235,7 @@ class SparkSubmitSuite
     val (_, _, conf1, _) = submit.prepareSubmitEnvironment(appArgs1)
 
     appArgs1.deployMode should be ("cluster")
-    conf1.get("spark.submit.deployMode") should be ("cluster")
+    conf1.get(SUBMIT_DEPLOY_MODE) should be ("cluster")
 
     // Neither cmdline nor configuration are specified, client mode is the default choice
     val clArgs2 = Seq(
@@ -247,7 +248,7 @@ class SparkSubmitSuite
 
     val (_, _, conf2, _) = submit.prepareSubmitEnvironment(appArgs2)
     appArgs2.deployMode should be ("client")
-    conf2.get("spark.submit.deployMode") should be ("client")
+    conf2.get(SUBMIT_DEPLOY_MODE) should be ("client")
   }
 
   test("handles YARN cluster mode") {
@@ -289,7 +290,7 @@ class SparkSubmitSuite
     conf.get("spark.yarn.dist.files") should include regex (".*file1.txt,.*file2.txt")
     conf.get("spark.yarn.dist.archives") should include regex (".*archive1.txt,.*archive2.txt")
     conf.get("spark.app.name") should be ("beauty")
-    conf.get("spark.ui.enabled") should be ("false")
+    conf.get(UI_ENABLED) should be (false)
     sys.props("SPARK_SUBMIT") should be ("true")
   }
 
@@ -328,7 +329,7 @@ class SparkSubmitSuite
     conf.get("spark.yarn.dist.archives") should include regex (".*archive1.txt,.*archive2.txt")
     conf.get("spark.yarn.dist.jars") should include
       regex (".*one.jar,.*two.jar,.*three.jar,.*thejar.jar")
-    conf.get("spark.ui.enabled") should be ("false")
+    conf.get(UI_ENABLED) should be (false)
     sys.props("SPARK_SUBMIT") should be ("true")
   }
 
@@ -373,13 +374,13 @@ class SparkSubmitSuite
     val confMap = conf.getAll.toMap
     confMap.keys should contain ("spark.master")
     confMap.keys should contain ("spark.app.name")
-    confMap.keys should contain ("spark.jars")
+    confMap.keys should contain (JARS.key)
     confMap.keys should contain ("spark.driver.memory")
     confMap.keys should contain ("spark.driver.cores")
     confMap.keys should contain ("spark.driver.supervise")
-    confMap.keys should contain ("spark.ui.enabled")
-    confMap.keys should contain ("spark.submit.deployMode")
-    conf.get("spark.ui.enabled") should be ("false")
+    confMap.keys should contain (UI_ENABLED.key)
+    confMap.keys should contain (SUBMIT_DEPLOY_MODE.key)
+    conf.get(UI_ENABLED) should be (false)
   }
 
   test("handles standalone client mode") {
@@ -401,7 +402,7 @@ class SparkSubmitSuite
     classpath(0) should endWith ("thejar.jar")
     conf.get("spark.executor.memory") should be ("5g")
     conf.get("spark.cores.max") should be ("5")
-    conf.get("spark.ui.enabled") should be ("false")
+    conf.get(UI_ENABLED) should be (false)
   }
 
   test("handles mesos client mode") {
@@ -423,7 +424,7 @@ class SparkSubmitSuite
     classpath(0) should endWith ("thejar.jar")
     conf.get("spark.executor.memory") should be ("5g")
     conf.get("spark.cores.max") should be ("5")
-    conf.get("spark.ui.enabled") should be ("false")
+    conf.get(UI_ENABLED) should be (false)
   }
 
   test("handles k8s cluster mode") {
@@ -466,7 +467,7 @@ class SparkSubmitSuite
     val (_, _, conf, mainClass) = submit.prepareSubmitEnvironment(appArgs)
     conf.get("spark.executor.memory") should be ("5g")
     conf.get("spark.master") should be ("yarn")
-    conf.get("spark.submit.deployMode") should be ("cluster")
+    conf.get(SUBMIT_DEPLOY_MODE) should be ("cluster")
     mainClass should be (SparkSubmit.YARN_CLUSTER_SUBMIT_CLASS)
   }
 
@@ -644,59 +645,60 @@ class SparkSubmitSuite
   }
 
   test("resolves command line argument paths correctly") {
-    val dir = Utils.createTempDir()
-    val archive = Paths.get(dir.toPath.toString, "single.zip")
-    Files.createFile(archive)
-    val jars = "/jar1,/jar2"
-    val files = "local:/file1,file2"
-    val archives = s"file:/archive1,${dir.toPath.toAbsolutePath.toString}/*.zip#archive3"
-    val pyFiles = "py-file1,py-file2"
-
-    // Test jars and files
-    val clArgs = Seq(
-      "--master", "local",
-      "--class", "org.SomeClass",
-      "--jars", jars,
-      "--files", files,
-      "thejar.jar")
-    val appArgs = new SparkSubmitArguments(clArgs)
-    val (_, _, conf, _) = submit.prepareSubmitEnvironment(appArgs)
-    appArgs.jars should be (Utils.resolveURIs(jars))
-    appArgs.files should be (Utils.resolveURIs(files))
-    conf.get("spark.jars") should be (Utils.resolveURIs(jars + ",thejar.jar"))
-    conf.get("spark.files") should be (Utils.resolveURIs(files))
-
-    // Test files and archives (Yarn)
-    val clArgs2 = Seq(
-      "--master", "yarn",
-      "--class", "org.SomeClass",
-      "--files", files,
-      "--archives", archives,
-      "thejar.jar"
-    )
-    val appArgs2 = new SparkSubmitArguments(clArgs2)
-    val (_, _, conf2, _) = submit.prepareSubmitEnvironment(appArgs2)
-    appArgs2.files should be (Utils.resolveURIs(files))
-    appArgs2.archives should fullyMatch regex ("file:/archive1,file:.*#archive3")
-    conf2.get("spark.yarn.dist.files") should be (Utils.resolveURIs(files))
-    conf2.get("spark.yarn.dist.archives") should fullyMatch regex
-      ("file:/archive1,file:.*#archive3")
-
-    // Test python files
-    val clArgs3 = Seq(
-      "--master", "local",
-      "--py-files", pyFiles,
-      "--conf", "spark.pyspark.driver.python=python3.4",
-      "--conf", "spark.pyspark.python=python3.5",
-      "mister.py"
-    )
-    val appArgs3 = new SparkSubmitArguments(clArgs3)
-    val (_, _, conf3, _) = submit.prepareSubmitEnvironment(appArgs3)
-    appArgs3.pyFiles should be (Utils.resolveURIs(pyFiles))
-    conf3.get("spark.submit.pyFiles") should be (
-      PythonRunner.formatPaths(Utils.resolveURIs(pyFiles)).mkString(","))
-    conf3.get(PYSPARK_DRIVER_PYTHON.key) should be ("python3.4")
-    conf3.get(PYSPARK_PYTHON.key) should be ("python3.5")
+//    withTempDir { dir =>
+//      val archive = Paths.get(dir.toPath.toString, "single.zip")
+//      Files.createFile(archive)
+//      val jars = "/jar1,/jar2"
+//      val files = "local:/file1,file2"
+//      val archives = s"file:/archive1,${dir.toPath.toAbsolutePath.toString}/*.zip#archive3"
+//      val pyFiles = "py-file1,py-file2"
+//
+//      // Test jars and files
+//      val clArgs = Seq(
+//        "--master", "local",
+//        "--class", "org.SomeClass",
+//        "--jars", jars,
+//        "--files", files,
+//        "thejar.jar")
+//      val appArgs = new SparkSubmitArguments(clArgs)
+//      val (_, _, conf, _) = submit.prepareSubmitEnvironment(appArgs)
+//      appArgs.jars should be(Utils.resolveURIs(jars))
+//      appArgs.files should be(Utils.resolveURIs(files))
+//      conf.get(JARS) should be(Utils.resolveURIs(jars + ",thejar.jar").split(",").toSeq)
+//      conf.get("spark.files") should be(Utils.resolveURIs(files))
+//
+//      // Test files and archives (Yarn)
+//      val clArgs2 = Seq(
+//        "--master", "yarn",
+//        "--class", "org.SomeClass",
+//        "--files", files,
+//        "--archives", archives,
+//        "thejar.jar"
+//      )
+//      val appArgs2 = new SparkSubmitArguments(clArgs2)
+//      val (_, _, conf2, _) = submit.prepareSubmitEnvironment(appArgs2)
+//      appArgs2.files should be(Utils.resolveURIs(files))
+//      appArgs2.archives should fullyMatch regex ("file:/archive1,file:.*#archive3")
+//      conf2.get("spark.yarn.dist.files") should be(Utils.resolveURIs(files))
+//      conf2.get("spark.yarn.dist.archives") should fullyMatch regex
+//        ("file:/archive1,file:.*#archive3")
+//
+//      // Test python files
+//      val clArgs3 = Seq(
+//        "--master", "local",
+//        "--py-files", pyFiles,
+//        "--conf", "spark.pyspark.driver.python=python3.4",
+//        "--conf", "spark.pyspark.python=python3.5",
+//        "mister.py"
+//      )
+//      val appArgs3 = new SparkSubmitArguments(clArgs3)
+//      val (_, _, conf3, _) = submit.prepareSubmitEnvironment(appArgs3)
+//      appArgs3.pyFiles should be(Utils.resolveURIs(pyFiles))
+//      conf3.get(SUBMIT_PYTHON_FILES) should be(
+//        PythonRunner.formatPaths(Utils.resolveURIs(pyFiles)))
+//      conf3.get(PYSPARK_DRIVER_PYTHON.key) should be("python3.4")
+//      conf3.get(PYSPARK_PYTHON.key) should be("python3.5")
+//    }
   }
 
   test("ambiguous archive mapping results in error message") {
@@ -728,77 +730,77 @@ class SparkSubmitSuite
     val archives = "file:/archive1,archive2" // spark.yarn.dist.archives
     val pyFiles = "py-file1,py-file2" // spark.submit.pyFiles
 
-    val tmpDir = Utils.createTempDir()
-
-    // Test jars and files
-    val f1 = File.createTempFile("test-submit-jars-files", "", tmpDir)
-    val writer1 = new PrintWriter(f1)
-    writer1.println("spark.jars " + jars)
-    writer1.println("spark.files " + files)
-    writer1.close()
-    val clArgs = Seq(
-      "--master", "local",
-      "--class", "org.SomeClass",
-      "--properties-file", f1.getPath,
-      "thejar.jar"
-    )
-    val appArgs = new SparkSubmitArguments(clArgs)
-    val (_, _, conf, _) = submit.prepareSubmitEnvironment(appArgs)
-    conf.get("spark.jars") should be(Utils.resolveURIs(jars + ",thejar.jar"))
-    conf.get("spark.files") should be(Utils.resolveURIs(files))
-
-    // Test files and archives (Yarn)
-    val f2 = File.createTempFile("test-submit-files-archives", "", tmpDir)
-    val writer2 = new PrintWriter(f2)
-    writer2.println("spark.yarn.dist.files " + files)
-    writer2.println("spark.yarn.dist.archives " + archives)
-    writer2.close()
-    val clArgs2 = Seq(
-      "--master", "yarn",
-      "--class", "org.SomeClass",
-      "--properties-file", f2.getPath,
-      "thejar.jar"
-    )
-    val appArgs2 = new SparkSubmitArguments(clArgs2)
-    val (_, _, conf2, _) = submit.prepareSubmitEnvironment(appArgs2)
-    conf2.get("spark.yarn.dist.files") should be(Utils.resolveURIs(files))
-    conf2.get("spark.yarn.dist.archives") should be(Utils.resolveURIs(archives))
-
-    // Test python files
-    val f3 = File.createTempFile("test-submit-python-files", "", tmpDir)
-    val writer3 = new PrintWriter(f3)
-    writer3.println("spark.submit.pyFiles " + pyFiles)
-    writer3.close()
-    val clArgs3 = Seq(
-      "--master", "local",
-      "--properties-file", f3.getPath,
-      "mister.py"
-    )
-    val appArgs3 = new SparkSubmitArguments(clArgs3)
-    val (_, _, conf3, _) = submit.prepareSubmitEnvironment(appArgs3)
-    conf3.get("spark.submit.pyFiles") should be(
-      PythonRunner.formatPaths(Utils.resolveURIs(pyFiles)).mkString(","))
-
-    // Test remote python files
-    val hadoopConf = new Configuration()
-    updateConfWithFakeS3Fs(hadoopConf)
-    val f4 = File.createTempFile("test-submit-remote-python-files", "", tmpDir)
-    val pyFile1 = File.createTempFile("file1", ".py", tmpDir)
-    val pyFile2 = File.createTempFile("file2", ".py", tmpDir)
-    val writer4 = new PrintWriter(f4)
-    val remotePyFiles = s"s3a://${pyFile1.getAbsolutePath},s3a://${pyFile2.getAbsolutePath}"
-    writer4.println("spark.submit.pyFiles " + remotePyFiles)
-    writer4.close()
-    val clArgs4 = Seq(
-      "--master", "yarn",
-      "--deploy-mode", "cluster",
-      "--properties-file", f4.getPath,
-      "hdfs:///tmp/mister.py"
-    )
-    val appArgs4 = new SparkSubmitArguments(clArgs4)
-    val (_, _, conf4, _) = submit.prepareSubmitEnvironment(appArgs4, conf = Some(hadoopConf))
-    // Should not format python path for yarn cluster mode
-    conf4.get("spark.submit.pyFiles") should be(Utils.resolveURIs(remotePyFiles))
+//    withTempDir { tmpDir =>
+//      // Test jars and files
+//      val f1 = File.createTempFile("test-submit-jars-files", "", tmpDir)
+//      val writer1 = new PrintWriter(f1)
+//      writer1.println("spark.jars " + jars)
+//      writer1.println("spark.files " + files)
+//      writer1.close()
+//      val clArgs = Seq(
+//        "--master", "local",
+//        "--class", "org.SomeClass",
+//        "--properties-file", f1.getPath,
+//        "thejar.jar"
+//      )
+//      val appArgs = new SparkSubmitArguments(clArgs)
+//      val (_, _, conf, _) = submit.prepareSubmitEnvironment(appArgs)
+//      conf.get(JARS) should be(Utils.resolveURIs(jars + ",thejar.jar").split(",").toSeq)
+//      conf.get(FILES) should be(Utils.resolveURIs(files).split(",").toSeq)
+//
+//      // Test files and archives (Yarn)
+//      val f2 = File.createTempFile("test-submit-files-archives", "", tmpDir)
+//      val writer2 = new PrintWriter(f2)
+//      writer2.println("spark.yarn.dist.files " + files)
+//      writer2.println("spark.yarn.dist.archives " + archives)
+//      writer2.close()
+//      val clArgs2 = Seq(
+//        "--master", "yarn",
+//        "--class", "org.SomeClass",
+//        "--properties-file", f2.getPath,
+//        "thejar.jar"
+//      )
+//      val appArgs2 = new SparkSubmitArguments(clArgs2)
+//      val (_, _, conf2, _) = submit.prepareSubmitEnvironment(appArgs2)
+//      conf2.get("spark.yarn.dist.files") should be(Utils.resolveURIs(files))
+//      conf2.get("spark.yarn.dist.archives") should be(Utils.resolveURIs(archives))
+//
+//      // Test python files
+//      val f3 = File.createTempFile("test-submit-python-files", "", tmpDir)
+//      val writer3 = new PrintWriter(f3)
+//      writer3.println("spark.submit.pyFiles " + pyFiles)
+//      writer3.close()
+//      val clArgs3 = Seq(
+//        "--master", "local",
+//        "--properties-file", f3.getPath,
+//        "mister.py"
+//      )
+//      val appArgs3 = new SparkSubmitArguments(clArgs3)
+//      val (_, _, conf3, _) = submit.prepareSubmitEnvironment(appArgs3)
+//      conf3.get(SUBMIT_PYTHON_FILES) should be(
+//        PythonRunner.formatPaths(Utils.resolveURIs(pyFiles)))
+//
+//      // Test remote python files
+//      val hadoopConf = new Configuration()
+//      updateConfWithFakeS3Fs(hadoopConf)
+//      val f4 = File.createTempFile("test-submit-remote-python-files", "", tmpDir)
+//      val pyFile1 = File.createTempFile("file1", ".py", tmpDir)
+//      val pyFile2 = File.createTempFile("file2", ".py", tmpDir)
+//      val writer4 = new PrintWriter(f4)
+//      val remotePyFiles = s"s3a://${pyFile1.getAbsolutePath},s3a://${pyFile2.getAbsolutePath}"
+//      writer4.println("spark.submit.pyFiles " + remotePyFiles)
+//      writer4.close()
+//      val clArgs4 = Seq(
+//        "--master", "yarn",
+//        "--deploy-mode", "cluster",
+//        "--properties-file", f4.getPath,
+//        "hdfs:///tmp/mister.py"
+//      )
+//      val appArgs4 = new SparkSubmitArguments(clArgs4)
+//      val (_, _, conf4, _) = submit.prepareSubmitEnvironment(appArgs4, conf = Some(hadoopConf))
+//      // Should not format python path for yarn cluster mode
+//      conf4.get(SUBMIT_PYTHON_FILES) should be(Utils.resolveURIs(remotePyFiles).split(","))
+//    }
   }
 
   test("user classpath first in driver") {
@@ -1019,7 +1021,7 @@ class SparkSubmitSuite
     conf.get("spark.repl.local.jars") should (startWith("file:"))
 
     // local py files should not be a URI format.
-    conf.get("spark.submit.pyFiles") should (startWith("/"))
+    conf.get(SUBMIT_PYTHON_FILES).foreach { _ should (startWith("/")) }
   }
 
   test("download remote resource if it is not supported by yarn service") {
@@ -1153,8 +1155,8 @@ class SparkSubmitSuite
     val appArgs = new SparkSubmitArguments(args)
     val (_, _, conf, _) = submit.prepareSubmitEnvironment(appArgs, conf = Some(hadoopConf))
 
-    conf.get(PY_FILES.key) should be (s"s3a://${pyFile.getAbsolutePath}")
-    conf.get("spark.submit.pyFiles") should (startWith("/"))
+    conf.get(PY_FILES.key) should be(s"s3a://${pyFile.getAbsolutePath}")
+    conf.get(SUBMIT_PYTHON_FILES).foreach { _ should (startWith("/")) }
 
     // Verify "spark.submit.pyFiles"
     val args1 = Seq(
@@ -1169,8 +1171,8 @@ class SparkSubmitSuite
     val appArgs1 = new SparkSubmitArguments(args1)
     val (_, _, conf1, _) = submit.prepareSubmitEnvironment(appArgs1, conf = Some(hadoopConf))
 
-    conf1.get(PY_FILES.key) should be (s"s3a://${pyFile.getAbsolutePath}")
-    conf1.get("spark.submit.pyFiles") should (startWith("/"))
+    conf1.get(PY_FILES.key) should be(s"s3a://${pyFile.getAbsolutePath}")
+    conf.get(SUBMIT_PYTHON_FILES).foreach { _ should (startWith("/")) }
   }
 
   test("handles natural line delimiters in --properties-file and --conf uniformly") {
@@ -1218,6 +1220,23 @@ class SparkSubmitSuite
     }
 
     conf.get(nonDelimSpaceFromFile._1) should be ("blah")
+  }
+
+  test("get a Spark configuration from arguments") {
+    val testConf = "spark.test.hello" -> "world"
+    val masterConf = "spark.master" -> "yarn"
+    val clArgs = Seq(
+      "--conf", s"${testConf._1}=${testConf._2}",
+      "--conf", s"${masterConf._1}=${masterConf._2}",
+      "--class", "Foo",
+      "app.jar")
+    val conf = new SparkSubmitArguments(clArgs).toSparkConf()
+     Seq(
+       testConf,
+       masterConf
+     ).foreach { case (k, v) =>
+       conf.get(k) should be (v)
+     }
   }
 }
 

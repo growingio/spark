@@ -14,25 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.deploy.k8s.integrationtest
 
-import java.io.File
+package org.apache.spark.sql.catalyst.expressions.aggregate
 
-import com.google.common.base.Charsets
-import com.google.common.io.Files
-
-object TestConfig {
-  def getTestImageTag: String = {
-    val imageTagFileProp = System.getProperty("spark.kubernetes.test.imageTagFile")
-    require(imageTagFileProp != null, "Image tag file must be provided in system properties.")
-    val imageTagFile = new File(imageTagFileProp)
-    require(imageTagFile.isFile, s"No file found for image tag at ${imageTagFile.getAbsolutePath}.")
-    Files.toString(imageTagFile, Charsets.UTF_8).trim
-  }
-
-  def getTestImageRepo: String = {
-    val imageRepo = System.getProperty("spark.kubernetes.test.imageRepo")
-    require(imageRepo != null, "Image repo must be provided in system properties.")
-    imageRepo
-  }
+/**
+ * gio v2 types
+ */
+package object gio {
+  type BucketBitmapMerge = MergeBucketBitmap
+  type CBitmapMerge = MergeCBitmap
+  type SBitmapMerge = MergeSBitmap
 }

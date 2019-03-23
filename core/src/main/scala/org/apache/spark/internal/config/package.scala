@@ -38,7 +38,12 @@ package object config {
   private[spark] val DRIVER_USER_CLASS_PATH_FIRST =
     ConfigBuilder("spark.driver.userClassPathFirst").booleanConf.createWithDefault(false)
 
-  private[spark] val DRIVER_MEMORY = ConfigBuilder("spark.driver.memory")
+  private[spark] val DRIVER_CORES = ConfigBuilder("spark.driver.cores")
+    .doc("Number of cores to use for the driver process, only in cluster mode.")
+    .intConf
+    .createWithDefault(1)
+
+  private[spark] val DRIVER_MEMORY = ConfigBuilder(SparkLauncher.DRIVER_MEMORY)
     .doc("Amount of memory to use for the driver process, in MiB unless otherwise specified.")
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("1g")
@@ -76,6 +81,9 @@ package object config {
   private[spark] val EVENT_LOG_CALLSITE_LONG_FORM =
     ConfigBuilder("spark.eventLog.longForm.enabled").booleanConf.createWithDefault(false)
 
+  private[spark] val EXECUTOR_ID =
+    ConfigBuilder("spark.executor.id").stringConf.createOptional
+
   private[spark] val EXECUTOR_CLASS_PATH =
     ConfigBuilder(SparkLauncher.EXECUTOR_EXTRA_CLASSPATH).stringConf.createOptional
 
@@ -88,7 +96,11 @@ package object config {
   private[spark] val EXECUTOR_USER_CLASS_PATH_FIRST =
     ConfigBuilder("spark.executor.userClassPathFirst").booleanConf.createWithDefault(false)
 
-  private[spark] val EXECUTOR_MEMORY = ConfigBuilder("spark.executor.memory")
+  private[spark] val EXECUTOR_CORES = ConfigBuilder(SparkLauncher.EXECUTOR_CORES)
+    .intConf
+    .createWithDefault(1)
+
+  private[spark] val EXECUTOR_MEMORY = ConfigBuilder(SparkLauncher.EXECUTOR_MEMORY)
     .doc("Amount of memory to use per executor process, in MiB unless otherwise specified.")
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("1g")
@@ -97,6 +109,15 @@ package object config {
     .doc("The amount of off-heap memory to be allocated per executor in cluster mode, " +
       "in MiB unless otherwise specified.")
     .bytesConf(ByteUnit.MiB)
+    .createOptional
+
+  private[spark] val CORES_MAX = ConfigBuilder("spark.cores.max")
+    .doc("When running on a standalone deploy cluster or a Mesos cluster in coarse-grained " +
+      "sharing mode, the maximum amount of CPU cores to request for the application from across " +
+      "the cluster (not from each machine). If not set, the default will be " +
+      "`spark.deploy.defaultCores` on Spark's standalone cluster manager, or infinite " +
+      "(all available cores) on Mesos.")
+    .intConf
     .createOptional
 
   private[spark] val MEMORY_OFFHEAP_ENABLED = ConfigBuilder("spark.memory.offHeap.enabled")
@@ -114,10 +135,6 @@ package object config {
     .bytesConf(ByteUnit.BYTE)
     .checkValue(_ >= 0, "The off-heap memory size must not be negative")
     .createWithDefault(0)
-
-  private[spark] val PYSPARK_EXECUTOR_MEMORY = ConfigBuilder("spark.executor.pyspark.memory")
-    .bytesConf(ByteUnit.MiB)
-    .createOptional
 
   private[spark] val IS_PYTHON_APP = ConfigBuilder("spark.yarn.isPython").internal()
     .booleanConf.createWithDefault(false)
@@ -155,6 +172,10 @@ package object config {
   private[spark] val PRINCIPAL = ConfigBuilder("spark.yarn.principal")
     .doc("Name of the Kerberos principal.")
     .stringConf.createOptional
+
+  private[spark] val KERBEROS_RELOGIN_PERIOD = ConfigBuilder("spark.kerberos.relogin.period")
+    .timeConf(TimeUnit.SECONDS)
+    .createWithDefaultString("1m")
 
   private[spark] val EXECUTOR_INSTANCES = ConfigBuilder("spark.executor.instances")
     .intConf
@@ -254,6 +275,10 @@ package object config {
     .stringConf
     .createOptional
 
+  private[spark] val METRICS_CONF = ConfigBuilder("spark.metrics.conf")
+    .stringConf
+    .createOptional
+
   private[spark] val PYSPARK_DRIVER_PYTHON = ConfigBuilder("spark.pyspark.driver.python")
     .stringConf
     .createOptional
@@ -265,11 +290,6 @@ package object config {
   // To limit how many applications are shown in the History Server summary ui
   private[spark] val HISTORY_UI_MAX_APPS =
     ConfigBuilder("spark.history.ui.maxApplications").intConf.createWithDefault(Integer.MAX_VALUE)
-
-  private[spark] val UI_SHOW_CONSOLE_PROGRESS = ConfigBuilder("spark.ui.showConsoleProgress")
-    .doc("When true, show the progress bar in the console.")
-    .booleanConf
-    .createWithDefault(false)
 
   private[spark] val IO_ENCRYPTION_ENABLED = ConfigBuilder("spark.io.encryption.enabled")
     .booleanConf
@@ -295,6 +315,17 @@ package object config {
     .doc("Address of driver endpoints.")
     .stringConf
     .createWithDefault(Utils.localCanonicalHostName())
+
+  private[spark] val DRIVER_PORT = ConfigBuilder("spark.driver.port")
+    .doc("Port of driver endpoints.")
+    .intConf
+    .createWithDefault(0)
+
+  private[spark] val DRIVER_SUPERVISE = ConfigBuilder("spark.driver.supervise")
+    .doc("If true, restarts the driver automatically if it fails with a non-zero exit status. " +
+      "Only has effect in Spark standalone mode or Mesos cluster deploy mode.")
+    .booleanConf
+    .createWithDefault(false)
 
   private[spark] val DRIVER_BIND_ADDRESS = ConfigBuilder("spark.driver.bindAddress")
     .doc("Address where to bind network listen sockets on the driver.")
@@ -363,6 +394,11 @@ package object config {
       .regexConf
       .createOptional
 
+  private[spark] val AUTH_SECRET =
+    ConfigBuilder("spark.authenticate.secret")
+      .stringConf
+      .createOptional
+
   private[spark] val AUTH_SECRET_BIT_LENGTH =
     ConfigBuilder("spark.authenticate.secretBitLength")
       .intConf
@@ -377,6 +413,37 @@ package object config {
     ConfigBuilder("spark.authenticate.enableSaslEncryption")
       .booleanConf
       .createWithDefault(false)
+
+  private[spark] val AUTH_SECRET_FILE =
+    ConfigBuilder("spark.authenticate.secret.file")
+      .doc("Path to a file that contains the authentication secret to use. The secret key is " +
+        "loaded from this path on both the driver and the executors if overrides are not set for " +
+        "either entity (see below). File-based secret keys are only allowed when using " +
+        "Kubernetes.")
+      .stringConf
+      .createOptional
+
+  private[spark] val AUTH_SECRET_FILE_DRIVER =
+    ConfigBuilder("spark.authenticate.secret.driver.file")
+      .doc("Path to a file that contains the authentication secret to use. Loaded by the " +
+        "driver. In Kubernetes client mode it is often useful to set a different secret " +
+        "path for the driver vs. the executors, since the driver may not be running in " +
+        "a pod unlike the executors. If this is set, an accompanying secret file must " +
+        "be specified for the executors. The fallback configuration allows the same path to be " +
+        "used for both the driver and the executors when running in cluster mode. File-based " +
+        "secret keys are only allowed when using Kubernetes.")
+      .fallbackConf(AUTH_SECRET_FILE)
+
+  private[spark] val AUTH_SECRET_FILE_EXECUTOR =
+    ConfigBuilder("spark.authenticate.secret.executor.file")
+      .doc("Path to a file that contains the authentication secret to use. Loaded by the " +
+        "executors only. In Kubernetes client mode it is often useful to set a different " +
+        "secret path for the driver vs. the executors, since the driver may not be running " +
+        "in a pod unlike the executors. If this is set, an accompanying secret file must be " +
+        "specified for the executors. The fallback configuration allows the same path to be " +
+        "used for both the driver and the executors when running in cluster mode. File-based " +
+        "secret keys are only allowed when using Kubernetes.")
+      .fallbackConf(AUTH_SECRET_FILE)
 
   private[spark] val NETWORK_ENCRYPTION_ENABLED =
     ConfigBuilder("spark.network.crypto.enabled")
@@ -510,30 +577,6 @@ package object config {
       .toSequence
       .createWithDefault(Nil)
 
-  private[spark] val UI_X_XSS_PROTECTION =
-    ConfigBuilder("spark.ui.xXssProtection")
-      .doc("Value for HTTP X-XSS-Protection response header")
-      .stringConf
-      .createWithDefaultString("1; mode=block")
-
-  private[spark] val UI_X_CONTENT_TYPE_OPTIONS =
-    ConfigBuilder("spark.ui.xContentTypeOptions.enabled")
-      .doc("Set to 'true' for setting X-Content-Type-Options HTTP response header to 'nosniff'")
-      .booleanConf
-      .createWithDefault(true)
-
-  private[spark] val UI_STRICT_TRANSPORT_SECURITY =
-    ConfigBuilder("spark.ui.strictTransportSecurity")
-      .doc("Value for HTTP Strict Transport Security Response Header")
-      .stringConf
-      .createOptional
-
-  private[spark] val UI_REQUEST_HEADER_SIZE =
-    ConfigBuilder("spark.ui.requestHeaderSize")
-      .doc("Value for HTTP request header size in bytes.")
-      .bytesConf(ByteUnit.BYTE)
-      .createWithDefaultString("8k")
-
   private[spark] val EXTRA_LISTENERS = ConfigBuilder("spark.extraListeners")
     .doc("Class names of listeners to add to SparkContext during initialization.")
     .stringConf
@@ -646,4 +689,178 @@ package object config {
       .stringConf
       .toSequence
       .createWithDefault(Nil)
+
+  private[spark] val EXECUTOR_LOGS_ROLLING_STRATEGY =
+    ConfigBuilder("spark.executor.logs.rolling.strategy").stringConf.createWithDefault("")
+
+  private[spark] val EXECUTOR_LOGS_ROLLING_TIME_INTERVAL =
+    ConfigBuilder("spark.executor.logs.rolling.time.interval").stringConf.createWithDefault("daily")
+
+  private[spark] val EXECUTOR_LOGS_ROLLING_MAX_SIZE =
+    ConfigBuilder("spark.executor.logs.rolling.maxSize")
+      .stringConf
+      .createWithDefault((1024 * 1024).toString)
+
+  private[spark] val EXECUTOR_LOGS_ROLLING_MAX_RETAINED_FILES =
+    ConfigBuilder("spark.executor.logs.rolling.maxRetainedFiles").intConf.createWithDefault(-1)
+
+  private[spark] val EXECUTOR_LOGS_ROLLING_ENABLE_COMPRESSION =
+    ConfigBuilder("spark.executor.logs.rolling.enableCompression")
+      .booleanConf
+      .createWithDefault(false)
+
+  private[spark] val MASTER_REST_SERVER_ENABLED = ConfigBuilder("spark.master.rest.enabled")
+    .booleanConf
+    .createWithDefault(false)
+
+  private[spark] val MASTER_REST_SERVER_PORT = ConfigBuilder("spark.master.rest.port")
+    .intConf
+    .createWithDefault(6066)
+
+  private[spark] val MASTER_UI_PORT = ConfigBuilder("spark.master.ui.port")
+    .intConf
+    .createWithDefault(8080)
+
+  private[spark] val IO_COMPRESSION_SNAPPY_BLOCKSIZE =
+    ConfigBuilder("spark.io.compression.snappy.blockSize")
+      .doc("Block size in bytes used in Snappy compression, in the case when " +
+        "Snappy compression codec is used. Lowering this block size " +
+        "will also lower shuffle memory usage when Snappy is used")
+      .bytesConf(ByteUnit.BYTE)
+      .createWithDefaultString("32k")
+
+  private[spark] val IO_COMPRESSION_LZ4_BLOCKSIZE =
+    ConfigBuilder("spark.io.compression.lz4.blockSize")
+      .doc("Block size in bytes used in LZ4 compression, in the case when LZ4 compression" +
+        "codec is used. Lowering this block size will also lower shuffle memory " +
+        "usage when LZ4 is used.")
+      .bytesConf(ByteUnit.BYTE)
+      .createWithDefaultString("32k")
+
+  private[spark] val IO_COMPRESSION_CODEC =
+    ConfigBuilder("spark.io.compression.codec")
+      .doc("The codec used to compress internal data such as RDD partitions, event log, " +
+        "broadcast variables and shuffle outputs. By default, Spark provides four codecs: " +
+        "lz4, lzf, snappy, and zstd. You can also use fully qualified class names to specify " +
+        "the codec")
+      .stringConf
+      .createWithDefaultString("lz4")
+
+  private[spark] val IO_COMPRESSION_ZSTD_BUFFERSIZE =
+    ConfigBuilder("spark.io.compression.zstd.bufferSize")
+      .doc("Buffer size in bytes used in Zstd compression, in the case when Zstd " +
+        "compression codec is used. Lowering this size will lower the shuffle " +
+        "memory usage when Zstd is used, but it might increase the compression " +
+        "cost because of excessive JNI call overhead")
+      .bytesConf(ByteUnit.BYTE)
+      .createWithDefaultString("32k")
+
+  private[spark] val IO_COMPRESSION_ZSTD_LEVEL =
+    ConfigBuilder("spark.io.compression.zstd.level")
+      .doc("Compression level for Zstd compression codec. Increasing the compression " +
+        "level will result in better compression at the expense of more CPU and memory")
+      .intConf
+      .createWithDefault(1)
+
+  private[spark] val BUFFER_SIZE =
+    ConfigBuilder("spark.buffer.size")
+      .intConf
+      .createWithDefault(65536)
+
+  private[spark] val LOCALITY_WAIT_PROCESS = ConfigBuilder("spark.locality.wait.process")
+    .fallbackConf(LOCALITY_WAIT)
+
+  private[spark] val LOCALITY_WAIT_NODE = ConfigBuilder("spark.locality.wait.node")
+    .fallbackConf(LOCALITY_WAIT)
+
+  private[spark] val LOCALITY_WAIT_RACK = ConfigBuilder("spark.locality.wait.rack")
+    .fallbackConf(LOCALITY_WAIT)
+
+    private[spark] val REDUCER_MAX_SIZE_IN_FLIGHT = ConfigBuilder("spark.reducer.maxSizeInFlight")
+    .doc("Maximum size of map outputs to fetch simultaneously from each reduce task, " +
+      "in MiB unless otherwise specified. Since each output requires us to create a " +
+      "buffer to receive it, this represents a fixed memory overhead per reduce task, " +
+      "so keep it small unless you have a large amount of memory")
+    .bytesConf(ByteUnit.MiB)
+    .createWithDefaultString("48m")
+
+  private[spark] val REDUCER_MAX_REQS_IN_FLIGHT = ConfigBuilder("spark.reducer.maxReqsInFlight")
+    .doc("This configuration limits the number of remote requests to fetch blocks at " +
+      "any given point. When the number of hosts in the cluster increase, " +
+      "it might lead to very large number of inbound connections to one or more nodes, " +
+      "causing the workers to fail under load. By allowing it to limit the number of " +
+      "fetch requests, this scenario can be mitigated")
+    .intConf
+    .createWithDefault(Int.MaxValue)
+
+  private[spark] val BROADCAST_COMPRESS = ConfigBuilder("spark.broadcast.compress")
+    .doc("Whether to compress broadcast variables before sending them. " +
+      "Generally a good idea. Compression will use spark.io.compression.codec")
+    .booleanConf.createWithDefault(true)
+
+  private[spark] val BROADCAST_BLOCKSIZE = ConfigBuilder("spark.broadcast.blockSize")
+    .doc("Size of each piece of a block for TorrentBroadcastFactory, in " +
+      "KiB unless otherwise specified. Too large a value decreases " +
+      "parallelism during broadcast (makes it slower); however, " +
+      "if it is too small, BlockManager might take a performance hit")
+    .bytesConf(ByteUnit.KiB)
+    .createWithDefaultString("4m")
+
+  private[spark] val BROADCAST_CHECKSUM = ConfigBuilder("spark.broadcast.checksum")
+    .doc("Whether to enable checksum for broadcast. If enabled, " +
+      "broadcasts will include a checksum, which can help detect " +
+      "corrupted blocks, at the cost of computing and sending a little " +
+      "more data. It's possible to disable it if the network has other " +
+      "mechanisms to guarantee data won't be corrupted during broadcast")
+    .booleanConf.createWithDefault(true)
+
+  private[spark] val RDD_COMPRESS = ConfigBuilder("spark.rdd.compress")
+    .doc("Whether to compress serialized RDD partitions " +
+      "(e.g. for StorageLevel.MEMORY_ONLY_SER in Scala " +
+      "or StorageLevel.MEMORY_ONLY in Python). Can save substantial " +
+      "space at the cost of some extra CPU time. " +
+      "Compression will use spark.io.compression.codec")
+    .booleanConf.createWithDefault(false)
+
+  private[spark] val RDD_PARALLEL_LISTING_THRESHOLD =
+    ConfigBuilder("spark.rdd.parallelListingThreshold")
+      .intConf
+      .createWithDefault(10)
+
+  private[spark] val RDD_LIMIT_SCALE_UP_FACTOR =
+    ConfigBuilder("spark.rdd.limit.scaleUpFactor")
+      .intConf
+      .createWithDefault(4)
+
+  private[spark] val SERIALIZER = ConfigBuilder("spark.serializer")
+    .stringConf
+    .createWithDefault("org.apache.spark.serializer.JavaSerializer")
+
+  private[spark] val SERIALIZER_OBJECT_STREAM_RESET =
+    ConfigBuilder("spark.serializer.objectStreamReset")
+      .intConf
+      .createWithDefault(100)
+
+  private[spark] val SERIALIZER_EXTRA_DEBUG_INFO = ConfigBuilder("spark.serializer.extraDebugInfo")
+    .booleanConf
+    .createWithDefault(true)
+
+  private[spark] val JARS = ConfigBuilder("spark.jars")
+    .stringConf
+    .toSequence
+    .createWithDefault(Nil)
+
+  private[spark] val FILES = ConfigBuilder("spark.files")
+    .stringConf
+    .toSequence
+    .createWithDefault(Nil)
+
+  private[spark] val SUBMIT_DEPLOY_MODE = ConfigBuilder("spark.submit.deployMode")
+    .stringConf
+    .createWithDefault("client")
+
+  private[spark] val SUBMIT_PYTHON_FILES = ConfigBuilder("spark.submit.pyFiles")
+    .stringConf
+    .toSequence
+    .createWithDefault(Nil)
 }

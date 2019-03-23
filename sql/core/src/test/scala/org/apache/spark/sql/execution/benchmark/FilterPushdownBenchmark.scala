@@ -20,17 +20,17 @@ package org.apache.spark.sql.execution.benchmark
 import java.io.{File, FileOutputStream, OutputStream}
 
 import scala.util.{Random, Try}
-
 import org.scalatest.{BeforeAndAfterEachTestData, Suite, TestData}
-
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.benchmark.Benchmark
+import org.apache.spark.internal.config.UI._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions.monotonically_increasing_id
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.ParquetOutputTimestampType
 import org.apache.spark.sql.types.{ByteType, Decimal, DecimalType, TimestampType}
-import org.apache.spark.util.{Benchmark, Utils}
+import org.apache.spark.util.Utils
 
 /**
  * Benchmark to measure read performance with Filter pushdown.
@@ -46,7 +46,7 @@ class FilterPushdownBenchmark extends SparkFunSuite with BenchmarkBeforeAndAfter
     .set("spark.master", "local[1]")
     .setIfMissing("spark.driver.memory", "3g")
     .setIfMissing("spark.executor.memory", "3g")
-    .setIfMissing("spark.ui.enabled", "false")
+    .setIfMissing(UI_ENABLED, false)
     .setIfMissing("orc.compression", "snappy")
     .setIfMissing("spark.sql.parquet.compression.codec", "snappy")
 

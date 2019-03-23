@@ -41,9 +41,10 @@ import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.deploy.history.HistoryServer
 import org.apache.spark.deploy.yarn.config._
-import org.apache.spark.deploy.yarn.security.AMCredentialRenewer
+import org.apache.spark.deploy.yarn.security.YARNHadoopDelegationTokenManager
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
+import org.apache.spark.internal.config.UI._
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.rpc._
 import org.apache.spark.scheduler.cluster.{CoarseGrainedSchedulerBackend, YarnSchedulerBackend}
@@ -99,20 +100,18 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     }
   }
 
-  private val credentialRenewer: Option[AMCredentialRenewer] = sparkConf.get(KEYTAB).map { _ =>
-    new AMCredentialRenewer(sparkConf, yarnConf)
+  private val tokenManager: Option[YARNHadoopDelegationTokenManager] = {
+    sparkConf.get(KEYTAB).map { _ =>
+      new YARNHadoopDelegationTokenManager(sparkConf, yarnConf)
+    }
   }
 
-  private val ugi = credentialRenewer match {
-    case Some(cr) =>
+  private val ugi = tokenManager match {
+    case Some(tm) =>
       // Set the context class loader so that the token renewer has access to jars distributed
       // by the user.
-      val currentLoader = Thread.currentThread().getContextClassLoader()
-      Thread.currentThread().setContextClassLoader(userClassLoader)
-      try {
-        cr.start()
-      } finally {
-        Thread.currentThread().setContextClassLoader(currentLoader)
+      Utils.withContextClassLoader(userClassLoader) {
+        tm.start()
       }
 
     case _ =>
@@ -256,7 +255,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
       if (isClusterMode) {
         // Set the web ui port to be ephemeral for yarn so we don't conflict with
         // other spark processes running on the same box
-        System.setProperty("spark.ui.port", "0")
+        System.setProperty(UI_PORT.key, "0")
 
         // Set the master and deploy mode property to match the requested mode.
         System.setProperty("spark.master", "yarn")
@@ -380,7 +379,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
           userClassThread.interrupt()
         }
         if (!inShutdown) {
-          credentialRenewer.foreach(_.stop())
+          tokenManager.foreach(_.stop())
         }
       }
     }
@@ -440,7 +439,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
       securityMgr,
       localResources)
 
-    credentialRenewer.foreach(_.setDriverRef(driverRef))
+    tokenManager.foreach(_.setDriverRef(driverRef))
 
     // Initialize the AM endpoint *after* the allocator has been initialized. This ensures
     // that when the driver sends an initial executor request (e.g. after an AM restart),
@@ -471,8 +470,8 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
         rpcEnv = sc.env.rpcEnv
 
         val userConf = sc.getConf
-        val host = userConf.get("spark.driver.host")
-        val port = userConf.get("spark.driver.port").toInt
+        val host = userConf.get(DRIVER_HOST_ADDRESS)
+        val port = userConf.get(DRIVER_PORT)
         registerAM(host, port, userConf, sc.ui.map(_.webUrl))
 
         val driverRef = rpcEnv.setupEndpointRef(
@@ -506,7 +505,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
       amCores, true)
 
     // The client-mode AM doesn't listen for incoming connections, so report an invalid port.
-    registerAM(hostname, -1, sparkConf, sparkConf.getOption("spark.driver.appUIAddress"))
+    registerAM(hostname, -1, sparkConf, sparkConf.get(DRIVER_APP_UI_ADDRESS))
 
     // The driver should be up and listening, so unlike cluster mode, just try to connect to it
     // with no waiting or retrying.
@@ -646,7 +645,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
         d.send(AddWebUIFilter(amFilter, params.toMap, proxyBase))
 
       case None =>
-        System.setProperty("spark.ui.filters", amFilter)
+        System.setProperty(UI_FILTERS.key, amFilter)
         params.foreach { case (k, v) => System.setProperty(s"spark.$amFilter.param.$k", v) }
     }
   }

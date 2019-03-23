@@ -574,7 +574,7 @@
       <dependency>
         <groupId>org.roaringbitmap</groupId>
         <artifactId>RoaringBitmap</artifactId>
-        <version>0.5.11</version>
+        <version>0.7.45</version>
       </dependency>
       <dependency>
         <groupId>commons-net</groupId>
@@ -2011,6 +2011,11 @@
           </exclusion>
         </exclusions>
       </dependency>
+      <dependency>
+        <groupId>io.growing</groupId>
+        <artifactId>bitmap</artifactId>
+        <version>0.6.26-GIO1.8.9</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -2618,6 +2623,13 @@
       </plugin>
     </plugins>
   </build>
+
+  <distributionManagement>
+    <repository>
+      <id>releases</id>
+      <url>http://54.223.132.19:8081/nexus/content/repositories/releases</url>
+    </repository>
+  </distributionManagement>
 
   <profiles>
 

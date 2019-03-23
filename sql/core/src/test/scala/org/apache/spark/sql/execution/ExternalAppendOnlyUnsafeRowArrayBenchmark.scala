@@ -20,13 +20,41 @@ package org.apache.spark.sql.execution
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv, TaskContext}
+import org.apache.spark.benchmark.{Benchmark, BenchmarkBase}
 import org.apache.spark.internal.config
 import org.apache.spark.memory.MemoryTestingUtils
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
-import org.apache.spark.util.Benchmark
 import org.apache.spark.util.collection.unsafe.sort.UnsafeExternalSorter
 
-object ExternalAppendOnlyUnsafeRowArrayBenchmark {
+/**
+ * Benchmark ExternalAppendOnlyUnsafeRowArray.
+ * To run this benchmark:
+ * {{{
+ *   1. without sbt:
+ *      bin/spark-submit --class <this class> --jars <spark core test jar> <spark sql test jar>
+ *   2. build/sbt build/sbt ";project sql;set javaOptions
+ *        in Test += \"-Dspark.memory.debugFill=false\";test:runMain <this class>"
+ *   3. generate result: SPARK_GENERATE_BENCHMARK_FILES=1 build/sbt ";project sql;set javaOptions
+ *        in Test += \"-Dspark.memory.debugFill=false\";test:runMain <this class>"
+ *      Results will be written to
+ *      "benchmarks/ExternalAppendOnlyUnsafeRowArrayBenchmark-results.txt".
+ * }}}
+ */
+/* object ExternalAppendOnlyUnsafeRowArrayBenchmark extends BenchmarkBase {
+
+  private val conf = new SparkConf(false)
+    // Make the Java serializer write a reset instruction (TC_RESET) after each object to test
+    // for a bug we had with bytes written past the last object in a batch (SPARK-2792)
+    .set(config.SERIALIZER_OBJECT_STREAM_RESET, 1)
+    .set(config.SERIALIZER, "org.apache.spark.serializer.JavaSerializer")
+
+  private def withFakeTaskContext(f: => Unit): Unit = {
+    val sc = new SparkContext("local", "test", conf)
+    val taskContext = MemoryTestingUtils.fakeTaskContext(SparkEnv.get)
+    TaskContext.setTaskContext(taskContext)
+    f
+    sc.stop()
+  }
 
   def testAgainstRawArrayBuffer(numSpillThreshold: Int, numRows: Int, iterations: Int): Unit = {
     val random = new java.util.Random()
@@ -235,3 +263,4 @@ object ExternalAppendOnlyUnsafeRowArrayBenchmark {
       config.SHUFFLE_SPILL_NUM_ELEMENTS_FORCE_SPILL_THRESHOLD.defaultValue.get, 10 * 1000, 1 << 4)
   }
 }
+*/

@@ -19,13 +19,13 @@ package org.apache.spark.sql.execution.vectorized
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 
-import scala.util.Random
+import org.apache.spark.benchmark.Benchmark
 
+import scala.util.Random
 import org.apache.spark.memory.MemoryMode
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.types.{ArrayType, BinaryType, IntegerType}
 import org.apache.spark.unsafe.Platform
-import org.apache.spark.util.Benchmark
 import org.apache.spark.util.collection.BitSet
 
 /**

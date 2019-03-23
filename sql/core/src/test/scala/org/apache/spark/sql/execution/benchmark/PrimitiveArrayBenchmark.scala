@@ -21,7 +21,6 @@ import scala.concurrent.duration._
 
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.catalyst.util._
-import org.apache.spark.util.Benchmark
 
 /**
  * Benchmark [[PrimitiveArray]] for DataFrame and Dataset program using primitive array
@@ -31,7 +30,7 @@ import org.apache.spark.util.Benchmark
  *
  * Benchmarks in this file are skipped in normal builds.
  */
-class PrimitiveArrayBenchmark extends BenchmarkBase {
+/* class PrimitiveArrayBenchmark extends BenchmarkBase {
 
   def writeDatasetArray(iters: Int): Unit = {
     import sparkSession.implicits._
@@ -80,3 +79,5 @@ class PrimitiveArrayBenchmark extends BenchmarkBase {
     writeDatasetArray(4)
   }
 }
+
+*/
