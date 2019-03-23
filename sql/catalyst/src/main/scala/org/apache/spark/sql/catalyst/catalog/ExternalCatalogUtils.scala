@@ -137,10 +137,10 @@ object ExternalCatalogUtils {
       inputPartitions
     } else {
       val partitionSchema = catalogTable.partitionSchema
-      val partitionColumnNames = catalogTable.partitionColumnNames.toSet
+      val partitionColumnNames = catalogTable.partitionColumnNames.map(_.toLowerCase).toSet
 
       val nonPartitionPruningPredicates = predicates.filterNot {
-        _.references.map(_.name).toSet.subsetOf(partitionColumnNames)
+        _.references.map(_.name.toLowerCase).toSet.subsetOf(partitionColumnNames)
       }
       if (nonPartitionPruningPredicates.nonEmpty) {
         throw new AnalysisException("Expected only partition pruning predicates: " +
@@ -150,7 +150,7 @@ object ExternalCatalogUtils {
       val boundPredicate =
         InterpretedPredicate.create(predicates.reduce(And).transform {
           case att: AttributeReference =>
-            val index = partitionSchema.indexWhere(_.name == att.name)
+            val index = partitionSchema.indexWhere(_.name.equalsIgnoreCase(att.name))
             BoundReference(index, partitionSchema(index).dataType, nullable = true)
         })
 
