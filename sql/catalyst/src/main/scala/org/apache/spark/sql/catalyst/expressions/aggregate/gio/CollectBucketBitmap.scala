@@ -20,7 +20,7 @@ package org.apache.spark.sql.catalyst.expressions.aggregate.gio
 import io.growing.bitmap.BucketBitMap
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription}
+import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription, ImplicitCastInputTypes}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{ImperativeAggregate, TypedImperativeAggregate}
 import org.apache.spark.sql.types.{AbstractDataType, BinaryType, DataType, IntegerType}
 
@@ -37,7 +37,8 @@ case class CollectBucketBitmap(
     bucket: Expression,
     uid: Expression,
     override val mutableAggBufferOffset: Int = 0,
-    override val inputAggBufferOffset: Int = 0) extends TypedImperativeAggregate[BucketBitMap] {
+    override val inputAggBufferOffset: Int = 0
+) extends TypedImperativeAggregate[BucketBitMap] with ImplicitCastInputTypes {
 
   def this(bucket: Expression, uid: Expression) = {
     this(bucket, uid, 0, 0)
@@ -78,7 +79,7 @@ case class CollectBucketBitmap(
   override def withNewInputAggBufferOffset(newOffset: Int): ImperativeAggregate =
     copy(inputAggBufferOffset = newOffset)
 
-  // override def inputTypes: Seq[AbstractDataType] = Seq(IntegerType, IntegerType)
+  override def inputTypes: Seq[AbstractDataType] = Seq(IntegerType, IntegerType)
 
   override def nullable: Boolean = true
 

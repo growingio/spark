@@ -20,7 +20,7 @@ package org.apache.spark.sql.catalyst.expressions.aggregate.gio
 import io.growing.bitmap.CBitMap
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription}
+import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription, ImplicitCastInputTypes}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{ImperativeAggregate, TypedImperativeAggregate}
 import org.apache.spark.sql.types.{AbstractDataType, BinaryType, DataType}
 
@@ -36,7 +36,8 @@ import org.apache.spark.sql.types.{AbstractDataType, BinaryType, DataType}
 case class MergeCBitmap(
     bitmap: Expression,
     override val mutableAggBufferOffset: Int = 0,
-    override val inputAggBufferOffset: Int = 0) extends TypedImperativeAggregate[CBitMap] {
+    override val inputAggBufferOffset: Int = 0
+) extends TypedImperativeAggregate[CBitMap] with ImplicitCastInputTypes {
 
   def this(bitmap: Expression) = {
     this(bitmap, 0, 0)
@@ -75,7 +76,7 @@ case class MergeCBitmap(
   override def withNewInputAggBufferOffset(newOffset: Int): ImperativeAggregate =
     copy(inputAggBufferOffset = newOffset)
 
-  // override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType)
+  override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType)
 
   override def nullable: Boolean = true
 

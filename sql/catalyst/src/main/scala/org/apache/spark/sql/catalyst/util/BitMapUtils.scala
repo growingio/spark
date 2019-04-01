@@ -25,8 +25,8 @@ import scala.collection.JavaConverters._
 object BitMapUtils {
 
   /**
-    * merge rid (ruleId index) into bucketBitmap
-    */
+   * merge rid (ruleId index) into bucketBitmap
+   */
   def mergeRuleId(bitmap: BucketBitMap, rid: Short): BucketBitMap = {
     if (bitmap == null || rid < 0) {
       return bitmap
@@ -40,8 +40,8 @@ object BitMapUtils {
   }
 
   /**
-    * Generate newKey for SID/EID...
-    */
+   * Generate newKey for SID/EID...
+   */
   private def mergeNewKey(rid: Short, id: Short): Short = {
     // rate is 8:8
     val key = ((rid & 0x00FF) << 8) | (id & 0x00FF)
@@ -49,8 +49,8 @@ object BitMapUtils {
   }
 
   /**
-    * merge rid (ruleId index) into CBitmap
-    */
+   * merge rid (ruleId index) into CBitmap
+   */
   def mergeRuleId(cbitmap: CBitMap, rid: Short): CBitMap = {
     val cbm = cbitmap.getContainer
     cbm.keySet().asScala.foreach { pos =>
@@ -60,8 +60,8 @@ object BitMapUtils {
   }
 
   /**
-    * merge rid (ruleId index) into SBitmap, merge into bucket id
-    */
+   * merge rid (ruleId index) into SBitmap, merge into bucket id
+   */
   def mergeRuleIdIntoBucketId(sbitmap: SBitMap, rid: Short): SBitMap = {
     val sbm = sbitmap.getContainer
     sbm.keySet().asScala.foreach { pos =>
@@ -71,8 +71,8 @@ object BitMapUtils {
   }
 
   /**
-    * merge rid (ruleId index) into SBitmap, merge into session id
-    */
+   * merge rid (ruleId index) into SBitmap, merge into session id
+   */
   def mergeRuleIdIntoSessionId(sbitmap: SBitMap, rid: Short): SBitMap = {
     val newContainer = new util.HashMap[lang.Integer, BucketBitMap]()
     sbitmap.getContainer.asScala.foreach { kv =>

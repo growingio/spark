@@ -20,7 +20,7 @@ package org.apache.spark.sql.catalyst.expressions.aggregate.gio
 import io.growing.bitmap.BucketBitMap
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription}
+import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription, ImplicitCastInputTypes}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{ImperativeAggregate, TypedImperativeAggregate}
 import org.apache.spark.sql.catalyst.util.BitMapUtils
 import org.apache.spark.sql.types.{AbstractDataType, BinaryType, DataType, NumericType}
@@ -32,7 +32,8 @@ import org.apache.spark.sql.types.{AbstractDataType, BinaryType, DataType, Numer
 @ExpressionDescription(
   usage =
     """
-      _FUNC_(e_bucket_bitmap) - Merge `bucket_bitmap` in each row into one bucket bitmap for ESBitmap.
+      _FUNC_(e_bucket_bitmap) -
+        Merge `bucket_bitmap` in each row into one bucket bitmap for ESBitmap.
     """
 )
 case class BucketBitmapMerge2(
@@ -40,10 +41,10 @@ case class BucketBitmapMerge2(
   rid: Expression,
   override val mutableAggBufferOffset: Int = 0,
   override val inputAggBufferOffset: Int = 0
-) extends TypedImperativeAggregate[BucketBitMap] {
+) extends TypedImperativeAggregate[BucketBitMap] with ImplicitCastInputTypes {
 
   override def prettyName: String = "bucket_bitmap_merge2"
-  // override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType, NumericType)
+  override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType, NumericType)
   override def dataType: DataType = BinaryType
   override def nullable: Boolean = true
   override def createAggregationBuffer(): BucketBitMap = new BucketBitMap()
