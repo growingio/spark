@@ -18,7 +18,9 @@
 package org.apache.spark.sql
 
 import org.apache.spark.sql.api.java._
+import org.apache.spark.sql.catalyst.expressions.{AggregateWindowFunction, AttributeReference, Expression, Literal}
 import org.apache.spark.sql.catalyst.plans.logical.Project
+import org.apache.spark.sql.catalyst.util.StringUtils
 import org.apache.spark.sql.execution.QueryExecution
 import org.apache.spark.sql.execution.columnar.InMemoryRelation
 import org.apache.spark.sql.execution.command.{CreateDataSourceTableAsSelectCommand, ExplainCommand}
@@ -26,7 +28,7 @@ import org.apache.spark.sql.execution.datasources.InsertIntoHadoopFsRelationComm
 import org.apache.spark.sql.functions.{lit, udf}
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.test.SQLTestData._
-import org.apache.spark.sql.types.{DataTypes, DoubleType}
+import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.QueryExecutionListener
 
 
@@ -417,4 +419,73 @@ class UDFSuite extends QueryTest with SharedSQLContext {
       checkAnswer(df, Seq(Row("null1x"), Row(null), Row("N3null")))
     }
   }
+
+  test("merge_map") {
+    withTable("merge_map_table") {
+      Seq(
+        ("a", 111, Map("a1" -> "b1", "a2" -> "b2", "a4" -> "b4")),
+        ("a", 111, Map("a1" ->"c1", "a3" -> "b3")),
+        ("a", 112, Map("a4" -> "c4")),
+        ("b", 111, Map("a1" -> "b1", "a2" -> "b2", "a4" -> "b4")),
+        ("b", 111, Map("a1" ->"c1", "a3" -> "b3")),
+        ("b", 111, Map("a4" -> "c4"))
+      ).toDF("name", "time", "psmap").write.format("json").saveAsTable("merge_map_table")
+      spark.udf.register[TestUserClassUDWF]("MERGE_MAP")
+
+      val sql =
+        s"""
+           |  select name,
+           |  MERGE_MAP(psmap) OVER(PARTITION BY name ORDER BY time, SIZE(psmap) ) aa,
+           |  row_number() OVER(PARTITION BY name ORDER BY time desc, SIZE(psmap) desc ) rn
+           |   from merge_map_table
+       """.stripMargin
+
+      spark.sql(sql).show(false)
+
+      def getFunctions(pattern: String): Seq[Row] = {
+        StringUtils.filterPattern(
+          spark.sessionState.catalog.listFunctions("default").map(_._1.funcName), pattern)
+          .map(Row(_))
+      }
+      val rows: Seq[Row] = getFunctions("merge_map")
+      assert(rows.head.getString(0) == "merge_map")
+    }
+
+
+  }
+}
+
+case class TestUserClassUDWF(mergeMap: Expression) extends AggregateWindowFunction{
+
+  private val emptyMap = Literal.create(Map.empty[String, String], MapType(StringType, StringType))
+
+  val current = AttributeReference("current", MapType(StringType, StringType), nullable = true)()
+
+  override def dataType: DataType = MapType(StringType, StringType)
+
+  override val evaluateExpression: Expression = aggBufferAttributes(0)
+
+  private val update =
+    functions.udf[Map[String, String],
+      Map[String, String],
+      Map[String, String]]((input, buffer) => {
+      var ret: Map[String, String] = buffer
+      input.foreach(item => {
+        ret = ret.updated(item._1, item._2)
+      })
+      ret
+    })
+
+  override val updateExpressions: Seq[Expression] = {
+    val updateMap = update(new Column(mergeMap), new Column(current))
+    updateMap.expr :: Nil
+  }
+
+  override def aggBufferAttributes: Seq[AttributeReference] = current :: Nil
+  override def children: Seq[Expression] = Seq(mergeMap)
+
+
+  override val initialValues: Seq[Expression] = emptyMap :: Nil
+
+  def inputTypes: Seq[DataType] = Seq(MapType(StringType, StringType))
 }

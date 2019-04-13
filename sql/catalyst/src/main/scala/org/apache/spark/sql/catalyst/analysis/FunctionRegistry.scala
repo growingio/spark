@@ -544,7 +544,7 @@ object FunctionRegistry {
   val functionSet: Set[FunctionIdentifier] = builtin.listFunction().toSet
 
   /** See usage above. */
-  private def expression[T <: Expression](name: String)
+  private[sql] def expression[T <: Expression](name: String)
       (implicit tag: ClassTag[T]): (String, (ExpressionInfo, FunctionBuilder)) = {
 
     // For `RuntimeReplaceable`, skip the constructor with most arguments, which is the main
