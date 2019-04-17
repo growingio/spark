@@ -21,7 +21,6 @@ import java.text.NumberFormat
 import java.util.{Date, Locale}
 
 import scala.collection.JavaConverters._
-
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hive.common.FileUtils
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars
@@ -34,7 +33,6 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.Object
 import org.apache.hadoop.io.Writable
 import org.apache.hadoop.mapred._
 import org.apache.hadoop.mapreduce.TaskType
-
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.mapred.SparkHadoopMapRedUtil
@@ -45,6 +43,8 @@ import org.apache.spark.sql.hive.HiveShim.{ShimFileSinkDesc => FileSinkDesc}
 import org.apache.spark.sql.types._
 import org.apache.spark.util.SerializableJobConf
 import org.apache.spark.util.collection.unsafe.sort.UnsafeExternalSorter
+
+import scala.collection.mutable
 
 /**
  * Internal helper class that saves an RDD using a Hive OutputFormat.
@@ -210,6 +210,7 @@ private[hive] object SparkHiveWriterContainer {
 
 private[spark] object SparkHiveDynamicPartitionWriterContainer {
   val SUCCESSFUL_JOB_OUTPUT_DIR_MARKER = "mapreduce.fileoutputcommitter.marksuccessfuljobs"
+  val USE_DYNAMIC_PARTITION_CONTAINER = "spark.sql.hive.useDynamicPartitionContainer"
 }
 
 private[spark] class SparkHiveDynamicPartitionWriterContainer(
@@ -223,6 +224,9 @@ private[spark] class SparkHiveDynamicPartitionWriterContainer(
 
   private val defaultPartName = jobConf.get(
     ConfVars.DEFAULTPARTITIONNAME.varname, ConfVars.DEFAULTPARTITIONNAME.defaultStrVal)
+
+  private val useDynamicPartitionContainer: Boolean = jobConf.getBoolean(
+    SparkHiveDynamicPartitionWriterContainer.USE_DYNAMIC_PARTITION_CONTAINER, true)
 
   override protected def initWriters(): Unit = {
     // do nothing
@@ -274,50 +278,79 @@ private[spark] class SparkHiveDynamicPartitionWriterContainer(
 
     // If anything below fails, we should abort the task.
     try {
-      val sorter: UnsafeKVExternalSorter = new UnsafeKVExternalSorter(
-        StructType.fromAttributes(partitionOutput),
-        StructType.fromAttributes(dataOutput),
-        SparkEnv.get.blockManager,
-        SparkEnv.get.serializerManager,
-        TaskContext.get().taskMemoryManager().pageSizeBytes,
-        SparkEnv.get.conf.getLong("spark.shuffle.spill.numElementsForceSpillThreshold",
-          UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD))
-
-      while (iterator.hasNext) {
-        val inputRow = iterator.next()
-        val currentKey = getPartitionKey(inputRow)
-        sorter.insertKV(currentKey, getOutputRow(inputRow))
-      }
-
-      logInfo(s"Sorting complete. Writing out partition files one at a time.")
-      val sortedIterator = sorter.sortedIterator()
       var currentKey: InternalRow = null
       var currentWriter: FileSinkOperator.RecordWriter = null
-      try {
-        while (sortedIterator.next()) {
-          if (currentKey != sortedIterator.getKey) {
-            if (currentWriter != null) {
-              currentWriter.close(false)
-            }
-            currentKey = sortedIterator.getKey.copy()
-            logDebug(s"Writing partition: $currentKey")
-            currentWriter = newOutputWriter(currentKey)
-          }
+      if (useDynamicPartitionContainer) {
+        val sorter: UnsafeKVExternalSorter = new UnsafeKVExternalSorter(
+          StructType.fromAttributes(partitionOutput),
+          StructType.fromAttributes(dataOutput),
+          SparkEnv.get.blockManager,
+          SparkEnv.get.serializerManager,
+          TaskContext.get().taskMemoryManager().pageSizeBytes,
+          SparkEnv.get.conf.getLong("spark.shuffle.spill.numElementsForceSpillThreshold",
+            UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD))
 
-          var i = 0
-          while (i < fieldOIs.length) {
-            outputData(i) = if (sortedIterator.getValue.isNullAt(i)) {
-              null
-            } else {
-              wrappers(i)(sortedIterator.getValue.get(i, dataTypes(i)))
-            }
-            i += 1
-          }
-          currentWriter.write(serializer.serialize(outputData, standardOI))
+        while (iterator.hasNext) {
+          val inputRow = iterator.next()
+          val currentKey = getPartitionKey(inputRow)
+          sorter.insertKV(currentKey, getOutputRow(inputRow))
         }
-      } finally {
-        if (currentWriter != null) {
-          currentWriter.close(false)
+
+        logInfo(s"Sorting complete. Writing out partition files one at a time.")
+        val sortedIterator = sorter.sortedIterator()
+        try {
+          while (sortedIterator.next()) {
+            if (currentKey != sortedIterator.getKey) {
+              if (currentWriter != null) {
+                currentWriter.close(false)
+              }
+              currentKey = sortedIterator.getKey.copy()
+              logDebug(s"Writing partition: $currentKey")
+              currentWriter = newOutputWriter(currentKey)
+            }
+
+            var i = 0
+            while (i < fieldOIs.length) {
+              outputData(i) = if (sortedIterator.getValue.isNullAt(i)) {
+                null
+              } else {
+                wrappers(i)(sortedIterator.getValue.get(i, dataTypes(i)))
+              }
+              i += 1
+            }
+            currentWriter.write(serializer.serialize(outputData, standardOI))
+          }
+        } finally {
+          if (currentWriter != null) {
+            currentWriter.close(false)
+          }
+        }
+      } else {
+        logInfo("UseDynamicPartitionContains is false, skip sorting.")
+        val keyWriterMap: mutable.Map[InternalRow, FileSinkOperator.RecordWriter] = mutable.Map()
+        try {
+          while (iterator.hasNext) {
+            val internalRow = iterator.next()
+            val key = getPartitionKey(internalRow)
+            if (currentKey != key) {
+              currentKey = key.copy()
+              logDebug(s"Writing partition: $currentKey")
+              currentWriter = keyWriterMap.getOrElseUpdate(currentKey, newOutputWriter(currentKey))
+            }
+
+            var i = 0
+            while (i < fieldOIs.length) {
+              outputData(i) = internalRow.get(i, dataTypes(i))
+              i += 1
+            }
+            currentWriter.write(serializer.serialize(outputData, standardOI))
+          }
+        } finally {
+          keyWriterMap.values.foreach(writer => {
+            if (writer != null) {
+              writer.close(false)
+            }
+          })
         }
       }
       commit()
