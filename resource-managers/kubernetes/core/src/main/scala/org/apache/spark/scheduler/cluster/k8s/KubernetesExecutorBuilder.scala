@@ -16,37 +16,37 @@
  */
 package org.apache.spark.scheduler.cluster.k8s
 
-import org.apache.spark.deploy.k8s.{KubernetesConf, KubernetesExecutorSpecificConf, KubernetesRoleSpecificConf, SparkPod}
-import org.apache.spark.deploy.k8s.features.{BasicExecutorFeatureStep, EnvSecretsFeatureStep, LocalDirsFeatureStep, MountSecretsFeatureStep}
+import java.io.File
 
-private[spark] class KubernetesExecutorBuilder(
-    provideBasicStep: (KubernetesConf[KubernetesExecutorSpecificConf]) => BasicExecutorFeatureStep =
-      new BasicExecutorFeatureStep(_),
-    provideSecretsStep:
-      (KubernetesConf[_ <: KubernetesRoleSpecificConf]) => MountSecretsFeatureStep =
-      new MountSecretsFeatureStep(_),
-    provideEnvSecretsStep:
-      (KubernetesConf[_ <: KubernetesRoleSpecificConf] => EnvSecretsFeatureStep) =
-      new EnvSecretsFeatureStep(_),
-    provideLocalDirsStep: (KubernetesConf[_ <: KubernetesRoleSpecificConf])
-      => LocalDirsFeatureStep =
-      new LocalDirsFeatureStep(_)) {
+import io.fabric8.kubernetes.client.KubernetesClient
+
+import org.apache.spark.SecurityManager
+import org.apache.spark.deploy.k8s._
+import org.apache.spark.deploy.k8s.features._
+
+private[spark] class KubernetesExecutorBuilder {
 
   def buildFromFeatures(
-    kubernetesConf: KubernetesConf[KubernetesExecutorSpecificConf]): SparkPod = {
-    val baseFeatures = Seq(provideBasicStep(kubernetesConf), provideLocalDirsStep(kubernetesConf))
-    var allFeatures = if (kubernetesConf.roleSecretNamesToMountPaths.nonEmpty) {
-      baseFeatures ++ Seq(provideSecretsStep(kubernetesConf))
-    } else baseFeatures
+      conf: KubernetesExecutorConf,
+      secMgr: SecurityManager,
+      client: KubernetesClient): SparkPod = {
+    val initialPod = conf.get(Config.KUBERNETES_EXECUTOR_PODTEMPLATE_FILE)
+      .map { file =>
+        KubernetesUtils.loadPodFromTemplate(
+          client,
+          new File(file),
+          conf.get(Config.KUBERNETES_EXECUTOR_PODTEMPLATE_CONTAINER_NAME))
+      }
+      .getOrElse(SparkPod.initialPod())
 
-    allFeatures = if (kubernetesConf.roleSecretEnvNamesToKeyRefs.nonEmpty) {
-      allFeatures ++ Seq(provideEnvSecretsStep(kubernetesConf))
-    } else allFeatures
+    val features = Seq(
+      new BasicExecutorFeatureStep(conf, secMgr),
+      new MountSecretsFeatureStep(conf),
+      new EnvSecretsFeatureStep(conf),
+      new LocalDirsFeatureStep(conf),
+      new MountVolumesFeatureStep(conf))
 
-    var executorPod = SparkPod.initialPod()
-    for (feature <- allFeatures) {
-      executorPod = feature.configurePod(executorPod)
-    }
-    executorPod
+    features.foldLeft(initialPod) { case (pod, feature) => feature.configurePod(pod) }
   }
+
 }
