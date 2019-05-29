@@ -81,13 +81,11 @@ class UDFRegistration private[sql] (functionRegistry: FunctionRegistry) extends 
   }
 
   /**
-    * Registers a user-defined window function (UDWF).
-    *
-    * @param name the name of UDWF
-    * @param tag the class of user-defined function
-    * @tparam T
-    *
-    */
+   * Registers a user-defined window function (UDWF).
+   *
+   * @param name the name of UDWF
+   * @param tag the class of user-defined function
+   */
   def register[T <: AggregateWindowFunction](name: String)(implicit tag: ClassTag[T]): Unit = {
     val builder = FunctionRegistry.expression(name)(tag)._2._2
     functionRegistry.createOrReplaceTempFunction(name, builder)
