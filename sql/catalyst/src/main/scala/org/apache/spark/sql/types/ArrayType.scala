@@ -36,13 +36,13 @@ object ArrayType extends AbstractDataType {
    */
   def apply(elementType: DataType): ArrayType = ArrayType(elementType, containsNull = true)
 
-  override private[sql] def defaultConcreteType: DataType = ArrayType(NullType, containsNull = true)
+  override def defaultConcreteType: DataType = ArrayType(NullType, containsNull = true)
 
-  override private[sql] def acceptsType(other: DataType): Boolean = {
+  override def acceptsType(other: DataType): Boolean = {
     other.isInstanceOf[ArrayType]
   }
 
-  override private[spark] def simpleString: String = "array"
+  override def simpleString: String = "array"
 }
 
 /**

@@ -34,11 +34,11 @@ class BinaryType private() extends AtomicType {
   // this type. Otherwise, the companion object would be of type "BinaryType$" in byte code.
   // Defined with a private constructor so the companion object is the only possible instantiation.
 
-  private[sql] type InternalType = Array[Byte]
+  type InternalType = Array[Byte]
 
-  @transient private[sql] lazy val tag = typeTag[InternalType]
+  @transient lazy val tag = typeTag[InternalType]
 
-  private[sql] val ordering = new Ordering[InternalType] {
+  val ordering = new Ordering[InternalType] {
     def compare(x: Array[Byte], y: Array[Byte]): Int = {
       TypeUtils.compareBinary(x, y)
     }

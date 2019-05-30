@@ -425,13 +425,13 @@ case class StructType(fields: Array[StructField]) extends DataType with Seq[Stru
 @InterfaceStability.Stable
 object StructType extends AbstractDataType {
 
-  override private[sql] def defaultConcreteType: DataType = new StructType
+  override def defaultConcreteType: DataType = new StructType
 
-  override private[sql] def acceptsType(other: DataType): Boolean = {
+  override def acceptsType(other: DataType): Boolean = {
     other.isInstanceOf[StructType]
   }
 
-  override private[sql] def simpleString: String = "struct"
+  override def simpleString: String = "struct"
 
   private[sql] def fromString(raw: String): StructType = {
     Try(DataType.fromJson(raw)).getOrElse(LegacyTypeStringParser.parse(raw)) match {

@@ -25,11 +25,11 @@ import org.apache.spark.sql.catalyst.expressions.Expression
 /**
  * A non-concrete data type, reserved for internal uses.
  */
-private[sql] abstract class AbstractDataType {
+abstract class AbstractDataType {
   /**
    * The default concrete type to use if we want to cast a null literal into this type.
    */
-  private[sql] def defaultConcreteType: DataType
+  def defaultConcreteType: DataType
 
   /**
    * Returns true if `other` is an acceptable input type for a function that expects this,
@@ -43,10 +43,10 @@ private[sql] abstract class AbstractDataType {
    *   NumericType.acceptsType(DecimalType(10, 2))
    * }}}
    */
-  private[sql] def acceptsType(other: DataType): Boolean
+  def acceptsType(other: DataType): Boolean
 
   /** Readable string representation for the type. */
-  private[sql] def simpleString: String
+  def simpleString: String
 }
 
 
@@ -60,23 +60,23 @@ private[sql] abstract class AbstractDataType {
  *
  * This means that we prefer StringType over BinaryType if it is possible to cast to StringType.
  */
-private[sql] class TypeCollection(private val types: Seq[AbstractDataType])
+class TypeCollection(private val types: Seq[AbstractDataType])
   extends AbstractDataType {
 
   require(types.nonEmpty, s"TypeCollection ($types) cannot be empty")
 
-  override private[sql] def defaultConcreteType: DataType = types.head.defaultConcreteType
+  override def defaultConcreteType: DataType = types.head.defaultConcreteType
 
-  override private[sql] def acceptsType(other: DataType): Boolean =
+  override def acceptsType(other: DataType): Boolean =
     types.exists(_.acceptsType(other))
 
-  override private[sql] def simpleString: String = {
+  override def simpleString: String = {
     types.map(_.simpleString).mkString("(", " or ", ")")
   }
 }
 
 
-private[sql] object TypeCollection {
+object TypeCollection {
 
   /**
    * Types that include numeric types and interval type. They are only used in unary_minus,
@@ -96,25 +96,25 @@ private[sql] object TypeCollection {
 /**
  * An `AbstractDataType` that matches any concrete data types.
  */
-protected[sql] object AnyDataType extends AbstractDataType {
+object AnyDataType extends AbstractDataType {
 
   // Note that since AnyDataType matches any concrete types, defaultConcreteType should never
   // be invoked.
-  override private[sql] def defaultConcreteType: DataType = throw new UnsupportedOperationException
+  override def defaultConcreteType: DataType = throw new UnsupportedOperationException
 
-  override private[sql] def simpleString: String = "any"
+  override def simpleString: String = "any"
 
-  override private[sql] def acceptsType(other: DataType): Boolean = true
+  override def acceptsType(other: DataType): Boolean = true
 }
 
 
 /**
  * An internal type used to represent everything that is not null, UDTs, arrays, structs, and maps.
  */
-protected[sql] abstract class AtomicType extends DataType {
-  private[sql] type InternalType
-  private[sql] val tag: TypeTag[InternalType]
-  private[sql] val ordering: Ordering[InternalType]
+abstract class AtomicType extends DataType {
+  type InternalType
+  val tag: TypeTag[InternalType]
+  val ordering: Ordering[InternalType]
 }
 
 object AtomicType {
@@ -141,11 +141,11 @@ abstract class NumericType extends AtomicType {
   // type parameter and add a numeric annotation (i.e., [JvmType : Numeric]). This gets
   // desugared by the compiler into an argument to the objects constructor. This means there is no
   // longer a no argument constructor and thus the JVM cannot serialize the object anymore.
-  private[sql] val numeric: Numeric[InternalType]
+  val numeric: Numeric[InternalType]
 }
 
 
-private[spark] object NumericType extends AbstractDataType {
+object NumericType extends AbstractDataType {
   /**
    * Enables matching against NumericType for expressions:
    * {{{
@@ -155,16 +155,16 @@ private[spark] object NumericType extends AbstractDataType {
    */
   def unapply(e: Expression): Boolean = e.dataType.isInstanceOf[NumericType]
 
-  override private[spark] def defaultConcreteType: DataType = DoubleType
+  override def defaultConcreteType: DataType = DoubleType
 
-  override private[spark] def simpleString: String = "numeric"
+  override def simpleString: String = "numeric"
 
-  override private[spark] def acceptsType(other: DataType): Boolean =
+  override def acceptsType(other: DataType): Boolean =
     other.isInstanceOf[NumericType]
 }
 
 
-private[sql] object IntegralType extends AbstractDataType {
+object IntegralType extends AbstractDataType {
   /**
    * Enables matching against IntegralType for expressions:
    * {{{
@@ -174,20 +174,20 @@ private[sql] object IntegralType extends AbstractDataType {
    */
   def unapply(e: Expression): Boolean = e.dataType.isInstanceOf[IntegralType]
 
-  override private[sql] def defaultConcreteType: DataType = IntegerType
+  override def defaultConcreteType: DataType = IntegerType
 
-  override private[sql] def simpleString: String = "integral"
+  override def simpleString: String = "integral"
 
-  override private[sql] def acceptsType(other: DataType): Boolean = other.isInstanceOf[IntegralType]
+  override def acceptsType(other: DataType): Boolean = other.isInstanceOf[IntegralType]
 }
 
 
-private[sql] abstract class IntegralType extends NumericType {
-  private[sql] val integral: Integral[InternalType]
+abstract class IntegralType extends NumericType {
+  val integral: Integral[InternalType]
 }
 
 
-private[sql] object FractionalType {
+object FractionalType {
   /**
    * Enables matching against FractionalType for expressions:
    * {{{
@@ -199,7 +199,7 @@ private[sql] object FractionalType {
 }
 
 
-private[sql] abstract class FractionalType extends NumericType {
-  private[sql] val fractional: Fractional[InternalType]
-  private[sql] val asIntegral: Integral[InternalType]
+abstract class FractionalType extends NumericType {
+  val fractional: Fractional[InternalType]
+  val asIntegral: Integral[InternalType]
 }

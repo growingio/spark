@@ -56,12 +56,12 @@ case class DecimalType(precision: Int, scale: Int) extends FractionalType {
   def this(precision: Int) = this(precision, 0)
   def this() = this(10)
 
-  private[sql] type InternalType = Decimal
-  @transient private[sql] lazy val tag = typeTag[InternalType]
-  private[sql] val numeric = Decimal.DecimalIsFractional
-  private[sql] val fractional = Decimal.DecimalIsFractional
-  private[sql] val ordering = Decimal.DecimalIsFractional
-  private[sql] val asIntegral = Decimal.DecimalAsIfIntegral
+  type InternalType = Decimal
+  @transient lazy val tag = typeTag[InternalType]
+  val numeric = Decimal.DecimalIsFractional
+  val fractional = Decimal.DecimalIsFractional
+  val ordering = Decimal.DecimalIsFractional
+  val asIntegral = Decimal.DecimalAsIfIntegral
 
   override def typeName: String = s"decimal($precision,$scale)"
 
@@ -189,13 +189,13 @@ object DecimalType extends AbstractDataType {
     }
   }
 
-  override private[sql] def defaultConcreteType: DataType = SYSTEM_DEFAULT
+  override def defaultConcreteType: DataType = SYSTEM_DEFAULT
 
-  override private[sql] def acceptsType(other: DataType): Boolean = {
+  override def acceptsType(other: DataType): Boolean = {
     other.isInstanceOf[DecimalType]
   }
 
-  override private[sql] def simpleString: String = "decimal"
+  override def simpleString: String = "decimal"
 
   private[sql] object Fixed {
     def unapply(t: DecimalType): Option[(Int, Int)] = Some((t.precision, t.scale))

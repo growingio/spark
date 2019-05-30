@@ -27,9 +27,10 @@ import org.apache.spark.annotation.InterfaceStability
 import org.apache.spark.api.python.PythonEvalType
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.api.java._
-import org.apache.spark.sql.catalyst.{JavaTypeInference, ScalaReflection}
+import org.apache.spark.sql.catalyst.{FunctionIdentifier, JavaTypeInference, ScalaReflection}
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry
 import org.apache.spark.sql.catalyst.expressions.{AggregateWindowFunction, Expression, ScalaUDF}
+import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateFunction
 import org.apache.spark.sql.execution.aggregate.ScalaUDAF
 import org.apache.spark.sql.execution.python.UserDefinedPythonFunction
 import org.apache.spark.sql.expressions.{SparkUserDefinedFunction, UserDefinedAggregateFunction, UserDefinedFunction}
@@ -81,14 +82,19 @@ class UDFRegistration private[sql] (functionRegistry: FunctionRegistry) extends 
   }
 
   /**
-   * Registers a user-defined window function (UDWF).
+   * Registers a user-defined function directly like
+   * [[AggregateWindowFunction]](UDWF) or other [[AggregateFunction]](UDAF).
    *
-   * @param name the name of UDWF
-   * @param tag the class of user-defined function
+   * @param name the name of UDAF
+   * @return the registered UDAF.
+   *
+   * @since GIO-2.4.3
    */
-  def register[T <: AggregateWindowFunction](name: String)(implicit tag: ClassTag[T]): Unit = {
-    val builder = FunctionRegistry.expression(name)(tag)._2._2
-    functionRegistry.createOrReplaceTempFunction(name, builder)
+  def register[T <: AggregateFunction](name: String)(implicit tag: ClassTag[T]): Unit = {
+    FunctionRegistry.expression(name)(tag) match {
+      case (funcName, (info, builder)) =>
+        functionRegistry.registerFunction(FunctionIdentifier(funcName), info, builder)
+    }
   }
 
   /**

@@ -434,10 +434,11 @@ class UDFSuite extends QueryTest with SharedSQLContext {
 
       val sql =
         s"""
-           |  select name,
+           |select
+           |  name,
            |  MERGE_MAP(psmap) OVER(PARTITION BY name ORDER BY time, SIZE(psmap) ) aa,
            |  row_number() OVER(PARTITION BY name ORDER BY time desc, SIZE(psmap) desc ) rn
-           |   from merge_map_table
+           |from merge_map_table
        """.stripMargin
 
       spark.sql(sql).show(false)

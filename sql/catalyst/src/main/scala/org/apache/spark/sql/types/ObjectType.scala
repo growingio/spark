@@ -23,16 +23,16 @@ import org.apache.spark.annotation.InterfaceStability
 
 @InterfaceStability.Evolving
 object ObjectType extends AbstractDataType {
-  override private[sql] def defaultConcreteType: DataType =
+  override def defaultConcreteType: DataType =
     throw new UnsupportedOperationException(
       s"null literals can't be casted to ${ObjectType.simpleString}")
 
-  override private[sql] def acceptsType(other: DataType): Boolean = other match {
+  override def acceptsType(other: DataType): Boolean = other match {
     case ObjectType(_) => true
     case _ => false
   }
 
-  override private[sql] def simpleString: String = "Object"
+  override def simpleString: String = "Object"
 }
 
 /**

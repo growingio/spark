@@ -27,11 +27,11 @@ import org.apache.spark.unsafe.types.UTF8String
  * replaced by a [[StringType]] before analysis.
  */
 sealed abstract class HiveStringType extends AtomicType {
-  private[sql] type InternalType = UTF8String
+  type InternalType = UTF8String
 
-  private[sql] val ordering = implicitly[Ordering[InternalType]]
+  val ordering = implicitly[Ordering[InternalType]]
 
-  @transient private[sql] lazy val tag = typeTag[InternalType]
+  @transient lazy val tag = typeTag[InternalType]
 
   override def defaultSize: Int = length
 

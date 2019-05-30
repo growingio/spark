@@ -81,13 +81,13 @@ case class MapType(
 @InterfaceStability.Stable
 object MapType extends AbstractDataType {
 
-  override private[sql] def defaultConcreteType: DataType = apply(NullType, NullType)
+  override def defaultConcreteType: DataType = apply(NullType, NullType)
 
-  override private[sql] def acceptsType(other: DataType): Boolean = {
+  override def acceptsType(other: DataType): Boolean = {
     other.isInstanceOf[MapType]
   }
 
-  override private[sql] def simpleString: String = "map"
+  override def simpleString: String = "map"
 
   /**
    * Construct a [[MapType]] object with the given key type and value type.

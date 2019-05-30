@@ -56,7 +56,7 @@ import org.apache.spark.sql.util.{ExecutionListenerManager, QueryExecutionListen
  * @param createQueryExecution Function used to create QueryExecution objects.
  * @param createClone Function used to create clones of the session state.
  */
-private[sql] class SessionState(
+class SessionState(
     sharedState: SharedState,
     val conf: SQLConf,
     val experimentalMethods: ExperimentalMethods,
@@ -112,7 +112,7 @@ private[sql] class SessionState(
   }
 }
 
-private[sql] object SessionState {
+object SessionState {
   def newHadoopConf(hadoopConf: Configuration, sqlConf: SQLConf): Configuration = {
     val newHadoopConf = new Configuration(hadoopConf)
     sqlConf.getAllConfs.foreach { case (k, v) => if (v ne null) newHadoopConf.set(k, v) }
