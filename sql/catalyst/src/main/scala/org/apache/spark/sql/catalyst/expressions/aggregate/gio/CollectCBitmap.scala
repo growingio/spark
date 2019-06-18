@@ -50,7 +50,7 @@ case class CollectCBitmap(
   override def update(buffer: CBitMap, input: InternalRow): CBitMap = {
     val _bucket = bucket.eval(input).asInstanceOf[Int].toShort
     val _uid = uid.eval(input).asInstanceOf[Int]
-    val _count = count.eval(input).asInstanceOf[Long]
+    val _count = count.eval(input).asInstanceOf[Number].longValue()
     if (_uid >= 0) buffer.add(_bucket, _uid, _count)
     buffer
   }
