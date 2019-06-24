@@ -17,19 +17,8 @@
 
 package org.apache.spark.network.shuffle;
 
-import java.nio.ByteBuffer;
-import java.util.Iterator;
-
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Timer;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
-
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
@@ -42,6 +31,23 @@ import org.apache.spark.network.shuffle.protocol.OpenBlocks;
 import org.apache.spark.network.shuffle.protocol.RegisterExecutor;
 import org.apache.spark.network.shuffle.protocol.StreamHandle;
 import org.apache.spark.network.shuffle.protocol.UploadBlock;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.nio.ByteBuffer;
+import java.util.Iterator;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class ExternalShuffleBlockHandlerSuite {
   TransportClient client = mock(TransportClient.class);
@@ -83,8 +89,8 @@ public class ExternalShuffleBlockHandlerSuite {
 
     ManagedBuffer block0Marker = new NioManagedBuffer(ByteBuffer.wrap(new byte[3]));
     ManagedBuffer block1Marker = new NioManagedBuffer(ByteBuffer.wrap(new byte[7]));
-    when(blockResolver.getBlockData("app0", "exec1", 0, 0, 0)).thenReturn(block0Marker);
-    when(blockResolver.getBlockData("app0", "exec1", 0, 0, 1)).thenReturn(block1Marker);
+    when(blockResolver.getBlockData("app0", "exec1", 0, 0, 0, 1)).thenReturn(block0Marker);
+    when(blockResolver.getBlockData("app0", "exec1", 0, 0, 1, 1)).thenReturn(block1Marker);
     ByteBuffer openBlocks = new OpenBlocks("app0", "exec1",
       new String[] { "shuffle_0_0_0", "shuffle_0_0_1" })
       .toByteBuffer();
@@ -107,8 +113,8 @@ public class ExternalShuffleBlockHandlerSuite {
     assertEquals(block0Marker, buffers.next());
     assertEquals(block1Marker, buffers.next());
     assertFalse(buffers.hasNext());
-    verify(blockResolver, times(1)).getBlockData("app0", "exec1", 0, 0, 0);
-    verify(blockResolver, times(1)).getBlockData("app0", "exec1", 0, 0, 1);
+    verify(blockResolver, times(1)).getBlockData("app0", "exec1", 0, 0, 0, 1);
+    verify(blockResolver, times(1)).getBlockData("app0", "exec1", 0, 0, 1, 1);
 
     // Verify open block request latency metrics
     Timer openBlockRequestLatencyMillis = (Timer) ((ExternalShuffleBlockHandler) handler)
