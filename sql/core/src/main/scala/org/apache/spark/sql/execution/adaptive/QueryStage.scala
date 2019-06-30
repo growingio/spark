@@ -20,16 +20,15 @@ package org.apache.spark.sql.execution.adaptive
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 
-import org.apache.spark.MapOutputStatistics
-import org.apache.spark.broadcast
+import org.apache.spark.{broadcast, MapOutputStatistics, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.plans.physical.Partitioning
+import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partitioning, PartitioningCollection}
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveExecutionUpdate
-import org.apache.spark.util.ThreadUtils
+import org.apache.spark.util.{SparkUncaughtExceptionHandler, ThreadUtils}
 
 /**
  * In adaptive execution mode, an execution plan is divided into multiple QueryStages. Each
@@ -54,6 +53,7 @@ abstract class QueryStage extends UnaryExecNode {
    */
   def executeChildStages(): Unit = {
     val executionId = sqlContext.sparkContext.getLocalProperty(SQLExecution.EXECUTION_ID_KEY)
+    val jobDesc = sqlContext.sparkContext.getLocalProperty(SparkContext.SPARK_JOB_DESCRIPTION)
 
     // Handle broadcast stages
     val broadcastQueryStages: Seq[BroadcastQueryStage] = child.collect {
@@ -61,7 +61,7 @@ abstract class QueryStage extends UnaryExecNode {
     }
     val broadcastFutures = broadcastQueryStages.map { queryStage =>
       Future {
-        SQLExecution.withExecutionId(sqlContext.sparkSession, executionId) {
+        SQLExecution.withExecutionIdAndJobDesc(sqlContext.sparkContext, executionId, jobDesc) {
           queryStage.prepareBroadcast()
         }
       }(QueryStage.executionContext)
@@ -73,7 +73,7 @@ abstract class QueryStage extends UnaryExecNode {
     }
     val shuffleStageFutures = shuffleQueryStages.map { queryStage =>
       Future {
-        SQLExecution.withExecutionId(sqlContext.sparkSession, executionId) {
+        SQLExecution.withExecutionIdAndJobDesc(sqlContext.sparkContext, executionId, jobDesc) {
           queryStage.execute()
         }
       }(QueryStage.executionContext)
@@ -85,18 +85,30 @@ abstract class QueryStage extends UnaryExecNode {
       Future.sequence(shuffleStageFutures)(implicitly, QueryStage.executionContext), Duration.Inf)
   }
 
+  private var prepared = false
+
   /**
    * Before executing the plan in this query stage, we execute all child stages, optimize the plan
    * in this stage and determine the reducer number based on the child stages' statistics. Finally
    * we do a codegen for this query stage and update the UI with the new plan.
    */
-  def prepareExecuteStage(): Unit = {
+  def prepareExecuteStage(): Unit = synchronized {
+    // Ensure the prepareExecuteStage method only be executed once.
+    if (prepared) {
+      return
+    }
+
+    // set the uncaughtExceptionHandler to catch the exception of child thread in the
+    // parent thread and then prevent the hang issue
+    Thread.setDefaultUncaughtExceptionHandler(new SparkUncaughtExceptionHandler())
+
     // 1. Execute childStages
     executeChildStages()
 
     // It is possible to optimize this stage's plan here based on the child stages' statistics.
     val oldChild = child
     OptimizeJoin(conf).apply(this)
+    HandleSkewedJoin(conf).apply(this)
     // If the Joins are changed, we need apply EnsureRequirements rule to add BroadcastExchange.
     if (!oldChild.fastEquals(child)) {
       child = EnsureRequirements(conf).apply(child)
@@ -106,18 +118,58 @@ abstract class QueryStage extends UnaryExecNode {
     val queryStageInputs: Seq[ShuffleQueryStageInput] = child.collect {
       case input: ShuffleQueryStageInput if !input.isLocalShuffle => input
     }
-    val childMapOutputStatistics = queryStageInputs.map(_.childStage.mapOutputStatistics)
-      .filter(_ != null).toArray
-    if (childMapOutputStatistics.length > 0) {
-      val exchangeCoordinator = new ExchangeCoordinator(
-        conf.targetPostShuffleInputSize,
-        conf.minNumPostShufflePartitions)
 
-      val partitionStartIndices =
-        exchangeCoordinator.estimatePartitionStartIndices(childMapOutputStatistics)
-      child = child.transform {
-        case ShuffleQueryStageInput(childStage, output, isLocalShuffle, _, _) =>
-          ShuffleQueryStageInput(childStage, output, isLocalShuffle, Some(partitionStartIndices))
+    val skewedShuffleQueryStageInputs: Seq[SkewedShuffleQueryStageInput] = child.collect {
+      case input: SkewedShuffleQueryStageInput => input
+    }
+
+    val leafNodes = child.collect {
+      case s: SparkPlan if s.children.isEmpty => s
+    }
+
+    // Ensure all leaf nodes are shuffle query stages
+    if (leafNodes.length == queryStageInputs.length + skewedShuffleQueryStageInputs.length) {
+      val childMapOutputStatistics = queryStageInputs.map(_.childStage.mapOutputStatistics)
+        .filter(_ != null).toArray
+      // Right now, Adaptive execution only support HashPartitionings and the same number of
+      // pre-shuffle partitions for those stages.
+
+      // Check partitionings
+      val partitioningsCheck = queryStageInputs.forall {
+        _.outputPartitioning match {
+          case hash: HashPartitioning => true
+          case collection: PartitioningCollection =>
+            collection.partitionings.forall(_.isInstanceOf[HashPartitioning])
+          case _ => false
+        }
+      }
+
+      // Check pre-shuffle partitions num
+      val numPreShufflePartitionsCheck =
+        childMapOutputStatistics.map(stats => stats.bytesByPartitionId.length).distinct.length == 1
+
+      if (childMapOutputStatistics.length > 0
+        && partitioningsCheck && numPreShufflePartitionsCheck) {
+        val exchangeCoordinator = new ExchangeCoordinator(
+          conf.targetPostShuffleInputSize,
+          conf.adaptiveTargetPostShuffleRowCount,
+          conf.minNumPostShufflePartitions)
+
+        if (queryStageInputs.length == 2 && queryStageInputs.forall(_.skewedPartitions.isDefined)) {
+          // If a skewed join is detected and optimized, we will omit the skewed partitions when
+          // estimate the partition start and end indices.
+          val (partitionStartIndices, partitionEndIndices) =
+            exchangeCoordinator.estimatePartitionStartEndIndices(
+              childMapOutputStatistics, queryStageInputs(0).skewedPartitions.get)
+          queryStageInputs.foreach { i =>
+            i.partitionStartIndices = Some(partitionStartIndices)
+            i.partitionEndIndices = Some(partitionEndIndices)
+          }
+        } else {
+          val partitionStartIndices =
+            exchangeCoordinator.estimatePartitionStartIndices(childMapOutputStatistics)
+          queryStageInputs.foreach(_.partitionStartIndices = Some(partitionStartIndices))
+        }
       }
     }
 
@@ -131,6 +183,7 @@ abstract class QueryStage extends UnaryExecNode {
         queryExecution.toString,
         SparkPlanInfo.fromSparkPlan(queryExecution.executedPlan)))
     }
+    prepared = true
   }
 
   // Caches the created ShuffleRowRDD so we can reuse that.

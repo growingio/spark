@@ -186,6 +186,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private MapInfo writePartitionedFile(File outputFile) throws IOException {
     // Track location of the partition starts in the output file
     final long[] lengths = new long[numPartitions];
+    final long[] records = new long[numPartitions];
     if (partitionWriters == null) {
       // We were passed an empty iterator
       return new MapInfo(lengths, records);
