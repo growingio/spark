@@ -244,18 +244,19 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     // Checkpoint all RDDs marked for checkpointing to ensure their lineages are
     // truncated periodically. Otherwise, we may run into stack overflows (SPARK-6847).
     ssc.sparkContext.setLocalProperty(RDD.CHECKPOINT_ALL_MARKED_ANCESTORS, "true")
+    val generateTime = new Time(System.currentTimeMillis())
     Try {
       jobScheduler.receiverTracker.allocateBlocksToBatch(time) // allocate received blocks to batch
-      graph.generateJobs(time) // generate jobs using allocated block
+      graph.generateJobs(generateTime) // generate jobs using allocated block
     } match {
       case Success(jobs) =>
-        val streamIdToInputInfos = jobScheduler.inputInfoTracker.getInfo(time)
+        val streamIdToInputInfos = jobScheduler.inputInfoTracker.getInfo(generateTime)
         jobScheduler.submitJobSet(JobSet(time, jobs, streamIdToInputInfos))
       case Failure(e) =>
-        jobScheduler.reportError("Error generating jobs for time " + time, e)
+        jobScheduler.reportError("Error generating jobs for time " + generateTime, e)
         PythonDStream.stopStreamingContextIfPythonProcessIsDead(e)
     }
-    eventLoop.post(DoCheckpoint(time, clearCheckpointDataLater = false))
+    eventLoop.post(DoCheckpoint(generateTime, clearCheckpointDataLater = false))
   }
 
   /** Clear DStream metadata for the given `time`. */

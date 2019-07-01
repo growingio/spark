@@ -150,7 +150,11 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
     } else {
       listenerBus.post(StreamingListenerBatchSubmitted(jobSet.toBatchInfo))
       jobSets.put(jobSet.time, jobSet)
-      jobSet.jobs.foreach(job => jobExecutor.execute(new JobHandler(job)))
+      jobSet.jobs.foreach(job => {
+        val jobHandler = new JobHandler(job)
+        jobHandler.run()
+//        jobExecutor.execute(new JobHandler(job))
+      })
       logInfo("Added jobs for time " + jobSet.time)
     }
   }
