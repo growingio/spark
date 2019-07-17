@@ -22,6 +22,7 @@ import java.util.Properties
 
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config.APP_CALLER_CONTEXT
 import org.apache.spark.memory.{MemoryMode, TaskMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
@@ -63,7 +64,7 @@ private[spark] abstract class Task[T](
     val jobId: Option[Int] = None,
     val appId: Option[String] = None,
     val appAttemptId: Option[String] = None,
-    val isBarrier: Boolean = false) extends Serializable {
+    val isBarrier: Boolean = false) extends Serializable with Logging {
 
   @transient lazy val metrics: TaskMetrics =
     SparkEnv.get.closureSerializer.newInstance().deserialize(ByteBuffer.wrap(serializedTaskMetrics))
@@ -226,6 +227,15 @@ private[spark] abstract class Task[T](
     }
     if (interruptThread && taskThread != null) {
       taskThread.interrupt()
+
+      // Bad code: some threads cannot interrupt/stop because of IO hang and etc.
+      Thread.sleep(2 * 60 * 1000)
+      // interrupt thread but seems not work, stop it
+      // stop seems not work, throw thread death
+      if (taskThread.isInterrupted && taskThread.isAlive) {
+        logError("ERROR: Task is still alive, maybe hang forever, exit now.")
+        throw new ThreadDeath()
+      }
     }
   }
 }
