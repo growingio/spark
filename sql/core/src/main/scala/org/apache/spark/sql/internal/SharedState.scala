@@ -189,14 +189,17 @@ object SharedState extends Logging {
   }
 
   private val HIVE_EXTERNAL_CATALOG_CLASS_NAME = "org.apache.spark.sql.hive.HiveExternalCatalog"
-  private val HIVE_EXTERNAL_MEMORY_CATALOG_CLASS_NAME = "org.apache.spark.sql.hive.HiveExternalMemoryCatalog"
+  private val HIVE_EXTERNAL_MEMORY_CATALOG_CLASS_NAME =
+    "org.apache.spark.sql.hive.HiveExternalMemoryCatalog"
 
   private def externalCatalogClassName(conf: SparkConf): String = {
     conf.get(CATALOG_IMPLEMENTATION) match {
       case "hive" =>
-        if (conf.get("spark.sql.hiveCatalog.memory", "false") == "true")
+        if (conf.get("spark.sql.hiveCatalog.memory", "false") == "true") {
           HIVE_EXTERNAL_MEMORY_CATALOG_CLASS_NAME
-        else HIVE_EXTERNAL_CATALOG_CLASS_NAME
+        } else {
+          HIVE_EXTERNAL_CATALOG_CLASS_NAME
+        }
       case "in-memory" => classOf[InMemoryCatalog].getCanonicalName
     }
   }
