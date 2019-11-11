@@ -411,11 +411,6 @@
       <artifactId>libfb303</artifactId>
       <scope>provided</scope>
     </dependency>
-
-    <dependency>
-      <groupId>io.growing.backend</groupId>
-      <artifactId>backend-commons</artifactId>
-    </dependency>
   </dependencies>
   <build>
     <outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>
