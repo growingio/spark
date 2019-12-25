@@ -2031,7 +2031,7 @@
       <dependency>
         <groupId>io.growing</groupId>
         <artifactId>bitmap</artifactId>
-        <version>0.6.26-GIO1.8.11</version>
+        <version>0.6.26-GIO1.8.13-SNAPSHOT</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
