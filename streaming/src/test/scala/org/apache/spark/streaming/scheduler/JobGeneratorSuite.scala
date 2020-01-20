@@ -128,7 +128,8 @@ class JobGeneratorSuite extends TestSuiteBase {
       ssc.stop()
     }
   }
-// SPARK-30576 is a function which block all job commit until the current job completed
+
+  // SPARK-30576 is a function which block all job commit until the current job completed
   // the input seq [1, 2, 3, 4, 5, 6]
   // batch duration: 1s
   // The 3th batch will take a long time。Normally the other batches will be completed quickly.
@@ -137,8 +138,6 @@ class JobGeneratorSuite extends TestSuiteBase {
   // be merge in the next batch. So that the size of jobSets is always less than 1
   //  2. the num completedBatches less than the size of seq。
   //  3. the data is not lost
-  //
-
   test("SPARK-30576: whatever only one batch commit ") {
     val testConf = conf
     testConf.set("spark.streaming.clock", "org.apache.spark.streaming.util.ManualClock")
