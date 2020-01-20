@@ -1540,4 +1540,12 @@ package object config {
     .bytesConf(ByteUnit.BYTE)
     .createOptional
 
+  private[spark] val ONLY_ONE_BATCH =
+    ConfigBuilder("spark.only.one.batch")
+      .doc("Whether to block streaming batch commit, merge all blocking batchs " +
+        "as one batch commit.")
+      .booleanConf
+      .createWithDefault(false)
+
+
 }
