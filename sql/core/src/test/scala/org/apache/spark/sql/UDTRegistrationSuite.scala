@@ -41,7 +41,7 @@ private[sql] class TestUserClassUDT extends UserDefinedType[TestUserClass] {
 
   override def userClass: Class[TestUserClass] = classOf[TestUserClass]
 
-  private[spark] override def asNullable: TestUserClassUDT = this
+  override def asNullable: TestUserClassUDT = this
 
   override def hashCode(): Int = classOf[TestUserClassUDT].getName.hashCode()
 

@@ -38,7 +38,6 @@ import org.json4s.JsonDSL._
  * Note: This was previously a developer API in Spark 1.x. We are making this private in Spark 2.0
  * because we will very likely create a new version of this that works better with Datasets.
  */
-private[spark]
 abstract class UserDefinedType[UserType >: Null] extends DataType with Serializable {
 
   /** Underlying storage type for this UDT */
@@ -58,7 +57,7 @@ abstract class UserDefinedType[UserType >: Null] extends DataType with Serializa
   /** Convert a SQL datum to the user type */
   def deserialize(datum: Any): UserType
 
-  override private[sql] def jsonValue: JValue = {
+  override def jsonValue: JValue = {
     ("type" -> "udt") ~
       ("class" -> this.getClass.getName) ~
       ("pyClass" -> pyUDT) ~
@@ -76,7 +75,7 @@ abstract class UserDefinedType[UserType >: Null] extends DataType with Serializa
    * For UDT, asNullable will not change the nullability of its internal sqlType and just returns
    * itself.
    */
-  override private[spark] def asNullable: UserDefinedType[UserType] = this
+  override def asNullable: UserDefinedType[UserType] = this
 
   override def acceptsType(dataType: DataType): Boolean = dataType match {
     case other: UserDefinedType[_] =>
@@ -97,7 +96,7 @@ abstract class UserDefinedType[UserType >: Null] extends DataType with Serializa
   override def catalogString: String = sqlType.simpleString
 }
 
-private[spark] object UserDefinedType {
+object UserDefinedType {
   /**
    * Get the sqlType of a (potential) [[UserDefinedType]].
    */
@@ -112,7 +111,7 @@ private[spark] object UserDefinedType {
  *
  * Note: This can only be accessed via Python UDF, or accessed as serialized object.
  */
-private[sql] class PythonUserDefinedType(
+class PythonUserDefinedType(
     val sqlType: DataType,
     override val pyUDT: String,
     override val serializedPyClass: String) extends UserDefinedType[Any] {
@@ -124,7 +123,7 @@ private[sql] class PythonUserDefinedType(
   /* There is no Java class for Python UDT */
   override def userClass: java.lang.Class[Any] = null
 
-  override private[sql] def jsonValue: JValue = {
+  override def jsonValue: JValue = {
     ("type" -> "udt") ~
       ("pyClass" -> pyUDT) ~
       ("serializedClass" -> serializedPyClass) ~

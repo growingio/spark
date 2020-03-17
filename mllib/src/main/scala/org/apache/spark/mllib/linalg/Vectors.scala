@@ -281,7 +281,7 @@ class VectorUDT extends UserDefinedType[Vector] {
 
   override def typeName: String = "vector"
 
-  private[spark] override def asNullable: VectorUDT = this
+  override def asNullable: VectorUDT = this
 }
 
 /**

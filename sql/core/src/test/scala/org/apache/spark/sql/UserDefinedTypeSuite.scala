@@ -65,7 +65,7 @@ object UDT {
 
     override def userClass: Class[MyDenseVector] = classOf[MyDenseVector]
 
-    private[spark] override def asNullable: MyDenseVectorUDT = this
+    override def asNullable: MyDenseVectorUDT = this
 
     override def hashCode(): Int = getClass.hashCode()
 

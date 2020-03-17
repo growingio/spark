@@ -63,5 +63,5 @@ private[sql] class ExamplePointUDT extends UserDefinedType[ExamplePoint] {
 
   override def userClass: Class[ExamplePoint] = classOf[ExamplePoint]
 
-  private[spark] override def asNullable: ExamplePointUDT = this
+  override def asNullable: ExamplePointUDT = this
 }

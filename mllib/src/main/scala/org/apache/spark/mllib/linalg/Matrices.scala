@@ -258,7 +258,7 @@ private[spark] class MatrixUDT extends UserDefinedType[Matrix] {
 
   override def pyUDT: String = "pyspark.mllib.linalg.MatrixUDT"
 
-  private[spark] override def asNullable: MatrixUDT = this
+  override def asNullable: MatrixUDT = this
 }
 
 /**

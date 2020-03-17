@@ -47,7 +47,7 @@ private[sql] class GroupableUDT extends UserDefinedType[GroupableData] {
 
   override def userClass: Class[GroupableData] = classOf[GroupableData]
 
-  private[spark] override def asNullable: GroupableUDT = this
+  override def asNullable: GroupableUDT = this
 }
 
 @BeanInfo
@@ -76,7 +76,7 @@ private[sql] class UngroupableUDT extends UserDefinedType[UngroupableData] {
 
   override def userClass: Class[UngroupableData] = classOf[UngroupableData]
 
-  private[spark] override def asNullable: UngroupableUDT = this
+  override def asNullable: UngroupableUDT = this
 }
 
 case class TestFunction(
