@@ -23,6 +23,10 @@ import scala.collection.mutable
 import org.apache.hadoop.conf.Configuration
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.catalyst.analysis.{
+  NoSuchDatabaseException,
+  NoSuchTableException
+}
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.catalog.{
   CatalogDatabase,
@@ -30,6 +34,8 @@ import org.apache.spark.sql.catalyst.catalog.{
   CatalogTablePartition
 }
 import org.apache.spark.util.ThreadUtils
+
+import scala.util.Try
 
 private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
                                                hadoopConf: Configuration)
@@ -45,6 +51,15 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
   )
 
   RefreshThreadStart()
+
+  override def tableExists(db: String, table: String): Boolean = {
+    try {
+      getTable(db, table)
+      true
+    } catch {
+      case e: NoSuchTableException => false
+    }
+  }
 
   override def getTable(db: String, table: String): CatalogTable = {
     meta_tbl.synchronized {
@@ -63,6 +78,15 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
       meta_tbl.remove(s"db:$db-tbl:$table")
     }
     super.dropTable(db, table, ignoreIfNotExists, purge)
+  }
+
+  override def databaseExists(db: String): Boolean = {
+    try {
+      getDatabase(db)
+      true
+    } catch {
+      case e: NoSuchDatabaseException => false
+    }
   }
 
   override def getDatabase(db: String): CatalogDatabase = {
