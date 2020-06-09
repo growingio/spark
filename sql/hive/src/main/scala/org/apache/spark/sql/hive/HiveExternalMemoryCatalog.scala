@@ -54,7 +54,7 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
 
   override def tableExists(db: String, table: String): Boolean = {
     try {
-      getTable(db, table)
+      getRawTable(db, table)
       true
     } catch {
       case e: NoSuchTableException => false
@@ -64,7 +64,7 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
   override def getRawTable(db: String, table: String): CatalogTable = {
     meta_tbl.synchronized {
       meta_tbl.getOrElseUpdate(getTableKey(db, table), {
-        super.getTable(db, table)
+        super.getRawTable(db, table)
       })
     }
   }
