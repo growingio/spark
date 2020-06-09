@@ -44,7 +44,6 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
 
   val meta_db = new mutable.HashMap[Int, CatalogDatabase]()
   val meta_tbl = new mutable.HashMap[Int, CatalogTable]()
-  val meta_partition = new mutable.HashMap[Int, CatalogTablePartition]()
   val refreshTime =
     conf.get("spark.sql.hiveCatalog.memory.refreshTime", "600").toInt
   val executor = ThreadUtils.newDaemonSingleThreadScheduledExecutor(
@@ -62,7 +61,7 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
     }
   }
 
-  override def getTable(db: String, table: String): CatalogTable = {
+  override def getRawTable(db: String, table: String): CatalogTable = {
     meta_tbl.synchronized {
       meta_tbl.getOrElseUpdate(getTableKey(db, table), {
         super.getTable(db, table)
@@ -98,30 +97,11 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
     }
   }
 
-  override def getPartition(db: String,
-                            table: String,
-                            spec: TablePartitionSpec): CatalogTablePartition = {
-    meta_partition.synchronized {
-      val partitionKey =
-        spec.toArray.sortBy(_._1).map(i => s"k:${i._1};v:${i._2}").mkString(",")
-      meta_partition.getOrElseUpdate(getPartitionKey(db, table, spec), {
-        super.getPartition(db, table, spec)
-      })
-    }
-  }
-
   private def getDbKey(db: String): Int = {
     s"db:$db".hashCode
   }
   private def getTableKey(db: String, table: String): Int = {
     s"db:$db-tbl:$table".hashCode
-  }
-  private def getPartitionKey(db: String,
-                              table: String,
-                              spec: TablePartitionSpec): Int = {
-    val partitionKey =
-      spec.toArray.sortBy(_._1).map(i => s"k:${i._1};v:${i._2}").mkString(",")
-    s"db:$db-tbl:$table-part:$partitionKey".hashCode
   }
 
   private def RefreshThreadStart(): Unit = {
@@ -129,7 +109,6 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
       override def run(): Unit = {
         meta_db.synchronized(meta_db.clear())
         meta_tbl.synchronized(meta_tbl.clear())
-        meta_partition.synchronized(meta_partition.clear())
       }
     }, refreshTime, TimeUnit.SECONDS)
   }
