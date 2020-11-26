@@ -26,6 +26,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config.APP_CALLER_CONTEXT
 import org.apache.spark.memory.{MemoryMode, TaskMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
+import org.apache.spark.rdd.InputFileBlockHolder
 import org.apache.spark.util._
 
 /**
@@ -100,6 +101,7 @@ private[spark] abstract class Task[T](
       taskContext
     }
 
+    InputFileBlockHolder.initialize()
     TaskContext.setTaskContext(context)
     taskThread = Thread.currentThread()
 
@@ -155,6 +157,7 @@ private[spark] abstract class Task[T](
           // Though we unset the ThreadLocal here, the context member variable itself is still
           // queried directly in the TaskRunner to check for FetchFailedExceptions.
           TaskContext.unset()
+          InputFileBlockHolder.unset()
         }
       }
     }

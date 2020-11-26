@@ -35,7 +35,8 @@ import org.apache.spark.util.ThreadUtils
  * A future for the result of an action to support cancellation. This is an extension of the
  * Scala Future interface to support cancellation.
  */
-trait FutureAction[T] extends Future[T] {
+trait
+FutureAction[T] extends Future[T] {
   // Note that we redefine methods of the Future trait here explicitly so we can specify a different
   // documentation (with reference to the word "action").
 

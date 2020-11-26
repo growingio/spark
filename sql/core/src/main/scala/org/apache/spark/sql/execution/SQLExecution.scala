@@ -20,9 +20,12 @@ package org.apache.spark.sql.execution
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
+import scala.concurrent.{ExecutionContext, Future}
+
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.ui.{SparkListenerSQLExecutionEnd, SparkListenerSQLExecutionStart}
+import org.apache.spark.util.Utils
 
 object SQLExecution {
 
@@ -129,11 +132,10 @@ object SQLExecution {
       }
     }
   }
-
   def withExecutionIdAndJobDesc[T](
-      sc: SparkContext,
-      executionId: String,
-      jobDesc: String)(body: => T): T = {
+                                    sc: SparkContext,
+                                    executionId: String,
+                                    jobDesc: String)(body: => T): T = {
     val oldExecutionId = sc.getLocalProperty(SQLExecution.EXECUTION_ID_KEY)
     val oldJobDesc = sc.getLocalProperty(SparkContext.SPARK_JOB_DESCRIPTION)
 
@@ -145,5 +147,31 @@ object SQLExecution {
       sc.setLocalProperty(SQLExecution.EXECUTION_ID_KEY, oldExecutionId)
       sc.setLocalProperty(SparkContext.SPARK_JOB_DESCRIPTION, oldJobDesc)
     }
+  }
+
+  /**
+   * Wrap passed function to ensure necessary thread-local variables like
+   * SparkContext local properties are forwarded to execution thread
+   */
+  def withThreadLocalCaptured[T](
+      sparkSession: SparkSession, exec: ExecutionContext)(body: => T): Future[T] = {
+    val activeSession = sparkSession
+    val sc = sparkSession.sparkContext
+    val localProps = Utils.cloneProperties(sc.getLocalProperties)
+    Future {
+      val originalSession = SparkSession.getActiveSession
+      val originalLocalProps = sc.getLocalProperties
+      SparkSession.setActiveSession(activeSession)
+      sc.setLocalProperties(localProps)
+      val res = body
+      // reset active session and local props.
+      sc.setLocalProperties(originalLocalProps)
+      if (originalSession.nonEmpty) {
+        SparkSession.setActiveSession(originalSession.get)
+      } else {
+        SparkSession.clearActiveSession()
+      }
+      res
+    }(exec)
   }
 }

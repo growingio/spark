@@ -52,6 +52,9 @@ private[spark] trait BasicTestsSuite { k8sSuite: KubernetesSuite =>
   }
 
   test("Run SparkPi with an argument.", k8sTestTag) {
+    // This additional configuration with snappy is for SPARK-26995
+    sparkAppConf
+      .set("spark.io.compression.codec", "snappy")
     runSparkPiAndVerifyCompletion(appArgs = Array("5"))
   }
 
@@ -101,6 +104,6 @@ private[spark] object BasicTestsSuite {
   val CONTAINER_LOCAL_DOWNLOADED_PAGE_RANK_DATA_FILE =
      s"$CONTAINER_LOCAL_FILE_DOWNLOAD_PATH/pagerank_data.txt"
   val REMOTE_PAGE_RANK_DATA_FILE =
-    "https://storage.googleapis.com/spark-k8s-integration-tests/files/pagerank_data.txt"
+    "https://raw.githubusercontent.com/apache/spark/master/data/mllib/pagerank_data.txt"
   val REMOTE_PAGE_RANK_FILE_NAME = "pagerank_data.txt"
 }

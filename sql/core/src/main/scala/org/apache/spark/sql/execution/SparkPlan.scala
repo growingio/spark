@@ -434,6 +434,15 @@ abstract class SparkPlan
     }
     newOrdering(order, Seq.empty)
   }
+
+  /**
+   * Cleans up the resources used by the physical operator (if any). In general, all the resources
+   * should be cleaned up when the task finishes but operators like SortMergeJoinExec and LimitExec
+   * may want eager cleanup to free up tight resources (e.g., memory).
+   */
+  protected[sql] def cleanupResources(): Unit = {
+    children.foreach(_.cleanupResources())
+  }
 }
 
 object SparkPlan {

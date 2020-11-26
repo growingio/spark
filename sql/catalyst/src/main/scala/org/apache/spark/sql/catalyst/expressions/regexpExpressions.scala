@@ -40,7 +40,7 @@ abstract class StringRegexExpression extends BinaryExpression
 
   // try cache the pattern for Literal
   private lazy val cache: Pattern = right match {
-    case x @ Literal(value: String, StringType) => compile(value)
+    case Literal(value: UTF8String, StringType) => compile(value.toString)
     case _ => null
   }
 
@@ -101,7 +101,8 @@ abstract class StringRegexExpression extends BinaryExpression
   """,
   note = """
     Use RLIKE to match with standard regular expressions.
-  """)
+  """,
+  since = "1.0.0")
 case class Like(left: Expression, right: Expression) extends StringRegexExpression {
 
   override def escape(v: String): String = StringUtils.escapeLikeRegex(v)
@@ -179,7 +180,8 @@ case class Like(left: Expression, right: Expression) extends StringRegexExpressi
   """,
   note = """
     Use LIKE to match with simple string pattern.
-  """)
+  """,
+  since = "1.0.0")
 case class RLike(left: Expression, right: Expression) extends StringRegexExpression {
 
   override def escape(v: String): String = v
@@ -237,7 +239,8 @@ case class RLike(left: Expression, right: Expression) extends StringRegexExpress
     Examples:
       > SELECT _FUNC_('oneAtwoBthreeC', '[ABC]');
        ["one","two","three",""]
-  """)
+  """,
+  since = "1.5.0")
 case class StringSplit(str: Expression, pattern: Expression)
   extends BinaryExpression with ImplicitCastInputTypes {
 
@@ -274,7 +277,8 @@ case class StringSplit(str: Expression, pattern: Expression)
     Examples:
       > SELECT _FUNC_('100-200', '(\\d+)', 'num');
        num-num
-  """)
+  """,
+  since = "1.5.0")
 // scalastyle:on line.size.limit
 case class RegExpReplace(subject: Expression, regexp: Expression, rep: Expression)
   extends TernaryExpression with ImplicitCastInputTypes {
@@ -362,6 +366,15 @@ case class RegExpReplace(subject: Expression, regexp: Expression, rep: Expressio
   }
 }
 
+object RegExpExtract {
+  def checkGroupIndex(groupCount: Int, groupIndex: Int): Unit = {
+    if (groupCount < groupIndex) {
+      throw new IllegalArgumentException(
+        s"Regex group count is $groupCount, but the specified group index is $groupIndex")
+    }
+  }
+}
+
 /**
  * Extract a specific(idx) group identified by a Java regex.
  *
@@ -373,7 +386,8 @@ case class RegExpReplace(subject: Expression, regexp: Expression, rep: Expressio
     Examples:
       > SELECT _FUNC_('100-200', '(\\d+)-(\\d+)', 1);
        100
-  """)
+  """,
+  since = "1.5.0")
 case class RegExpExtract(subject: Expression, regexp: Expression, idx: Expression)
   extends TernaryExpression with ImplicitCastInputTypes {
   def this(s: Expression, r: Expression) = this(s, r, Literal(1))
@@ -392,7 +406,9 @@ case class RegExpExtract(subject: Expression, regexp: Expression, idx: Expressio
     val m = pattern.matcher(s.toString)
     if (m.find) {
       val mr: MatchResult = m.toMatchResult
-      val group = mr.group(r.asInstanceOf[Int])
+      val index = r.asInstanceOf[Int]
+      RegExpExtract.checkGroupIndex(mr.groupCount, index)
+      val group = mr.group(index)
       if (group == null) { // Pattern matched, but not optional group
         UTF8String.EMPTY_UTF8
       } else {
@@ -410,6 +426,7 @@ case class RegExpExtract(subject: Expression, regexp: Expression, idx: Expressio
 
   override protected def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
     val classNamePattern = classOf[Pattern].getCanonicalName
+    val classNameRegExpExtract = classOf[RegExpExtract].getCanonicalName
     val matcher = ctx.freshName("matcher")
     val matchResult = ctx.freshName("matchResult")
 
@@ -433,6 +450,7 @@ case class RegExpExtract(subject: Expression, regexp: Expression, idx: Expressio
         $termPattern.matcher($subject.toString());
       if ($matcher.find()) {
         java.util.regex.MatchResult $matchResult = $matcher.toMatchResult();
+        $classNameRegExpExtract.checkGroupIndex($matchResult.groupCount(), $idx);
         if ($matchResult.group($idx) == null) {
           ${ev.value} = UTF8String.EMPTY_UTF8;
         } else {

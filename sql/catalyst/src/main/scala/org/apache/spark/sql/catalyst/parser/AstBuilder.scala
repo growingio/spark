@@ -401,6 +401,7 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
         case p: Predicate => p
         case e => Cast(e, BooleanType)
       }
+      // [SPARK-31663] use UnresolvedHaving
       Filter(predicate, plan)
     }
 

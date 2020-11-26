@@ -15,31 +15,32 @@
  * limitations under the License.
  */
 
+
 package org.apache.spark.sql.hive
 
 import java.util.concurrent.TimeUnit
 
 import scala.collection.mutable
+
 import org.apache.hadoop.conf.Configuration
+
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.analysis.{
   NoSuchDatabaseException,
   NoSuchTableException
 }
-import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.catalog.{
   CatalogDatabase,
-  CatalogTable,
-  CatalogTablePartition
+  CatalogTable
 }
 import org.apache.spark.util.ThreadUtils
 
-import scala.util.Try
+
 
 private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
                                                hadoopConf: Configuration)
-    extends HiveExternalCatalog(conf, hadoopConf)
+  extends HiveExternalCatalog(conf, hadoopConf)
     with Logging {
 
   val meta_db = new mutable.HashMap[Int, CatalogDatabase]()
@@ -112,5 +113,4 @@ private[spark] class HiveExternalMemoryCatalog(conf: SparkConf,
       }
     }, refreshTime, TimeUnit.SECONDS)
   }
-
 }

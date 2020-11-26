@@ -519,7 +519,7 @@ private[parquet] class ParquetFilters(
       case sources.StringStartsWith(name, prefix)
           if pushDownStartWith && canMakeFilterOn(name, prefix) =>
         Option(prefix).map { v =>
-          FilterApi.userDefined(binaryColumn(name),
+          FilterApi.userDefined(binaryColumn(nameToParquetField(name).fieldName),
             new UserDefinedPredicate[Binary] with Serializable {
               private val strToBinary = Binary.fromReusedByteArray(v.getBytes)
               private val size = strToBinary.length
@@ -541,7 +541,7 @@ private[parquet] class ParquetFilters(
               }
 
               override def keep(value: Binary): Boolean = {
-                UTF8String.fromBytes(value.getBytes).startsWith(
+                value != null && UTF8String.fromBytes(value.getBytes).startsWith(
                   UTF8String.fromBytes(strToBinary.getBytes))
               }
             }

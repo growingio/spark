@@ -955,6 +955,14 @@ class ParquetFilterSuite extends QueryTest with ParquetTest with SharedSQLContex
       }
     }
 
+    // SPARK-28371: make sure filter is null-safe.
+    withParquetDataFrame(Seq(Tuple1[String](null))) { implicit df =>
+      checkFilterPredicate(
+        '_1.startsWith("blah").asInstanceOf[Predicate],
+        classOf[UserDefinedByInstance[_, _]],
+        Seq.empty[Row])
+    }
+
     import testImplicits._
     // Test canDrop() has taken effect
     testStringStartsWith(spark.range(1024).map(_.toString).toDF(), "value like 'a%'")
@@ -1130,6 +1138,27 @@ class ParquetFilterSuite extends QueryTest with ParquetTest with SharedSQLContex
 
         withSQLConf(SQLConf.CASE_SENSITIVE.key -> "true") {
           checkAnswer(sql(s"select A from $tableName where B > 0"), (1 until count).map(Row(_)))
+        }
+      }
+    }
+  }
+
+  test("SPARK-30826: case insensitivity of StringStartsWith attribute") {
+    import testImplicits._
+    withSQLConf(SQLConf.CASE_SENSITIVE.key -> "false") {
+      withTable("t1") {
+        withTempPath { dir =>
+          val path = dir.toURI.toString
+          Seq("42").toDF("COL").write.parquet(path)
+          spark.sql(
+            s"""
+               |CREATE TABLE t1 (col STRING)
+               |USING parquet
+               |OPTIONS (path '$path')
+           """.stripMargin)
+          checkAnswer(
+            spark.sql("SELECT * FROM t1 WHERE col LIKE '4%'"),
+            Row("42"))
         }
       }
     }
