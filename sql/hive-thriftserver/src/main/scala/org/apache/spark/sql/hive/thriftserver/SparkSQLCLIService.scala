@@ -22,6 +22,7 @@ import java.util.{List => JList}
 import javax.security.auth.login.LoginException
 
 import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
 
 import org.apache.commons.logging.Log
 import org.apache.hadoop.hive.conf.HiveConf
@@ -32,6 +33,7 @@ import org.apache.hive.service.{AbstractService, Service, ServiceException}
 import org.apache.hive.service.Service.STATE
 import org.apache.hive.service.auth.HiveAuthFactory
 import org.apache.hive.service.cli._
+import org.apache.hive.service.cli.session.SessionManager
 import org.apache.hive.service.server.HiveServer2
 
 import org.apache.spark.sql.SQLContext
@@ -44,7 +46,21 @@ private[hive] class SparkSQLCLIService(hiveServer: HiveServer2, sqlContext: SQLC
   override def init(hiveConf: HiveConf) {
     setSuperField(this, "hiveConf", hiveConf)
 
-    val sparkSqlSessionManager = new SparkSQLSessionManager(hiveServer, sqlContext)
+    val managerClz =
+      sqlContext.getConf(
+        "spark.sql.thrift.sessionManager",
+        "org.apache.spark.sql.hive.thriftserver.SparkSQLSessionManager")
+    val sparkSqlSessionManager =
+      try {
+        val clazz = org.apache.spark.util.Utils.classForName(managerClz)
+        val ctor = clazz.getConstructors.head
+        ctor.setAccessible(true)
+        ctor.newInstance(hiveServer, sqlContext).asInstanceOf[SessionManager]
+      } catch {
+        case NonFatal(e) =>
+          throw new IllegalArgumentException(s"Error while instantiating '$managerClz':", e)
+      }
+
     setSuperField(this, "sessionManager", sparkSqlSessionManager)
     addService(sparkSqlSessionManager)
     var sparkServiceUGI: UserGroupInformation = null
